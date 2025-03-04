@@ -20,6 +20,7 @@ from windrose import WindroseAxes
 import matplotlib.cm as cm
 import xarray as xr
 from datetime import datetime, timedelta
+import time
 
 
 """
@@ -87,8 +88,8 @@ max_lon = -118
 
 
 # date range with one-day frequency
-date_range = pd.date_range(datetime(2021, 11, 1, 0, 0, 0), 
-                           datetime(2021, 12, 31, 0, 0, 0), 
+date_range = pd.date_range(datetime(2021, 1, 15, 21, 0, 0), 
+                           datetime(2021, 1, 31, 0, 0, 0), 
                            freq=timedelta(hours=1)).tolist()
 
 
@@ -97,10 +98,10 @@ for date in date_range: # [:1]:
     
     print (date)
     
-    # Create an hourly range on this day
+    # Create an hourly range on this day - but it is faster to download 1-hourly files.
     # time_range = pd.date_range(date, 
-    #                            date + pd.to_timedelta(1,"D"), 
-    #                            freq=timedelta(hours=1)).tolist()[:-1]
+    #                             date + pd.to_timedelta(1,"D"), 
+    #                             freq=timedelta(hours=1)).tolist()[:-1]
     time_range = [date]
     
 
@@ -121,13 +122,27 @@ for date in date_range: # [:1]:
     # HPBL|SHTFL|S
            
     # download seperate xarrays for different search strings (why cannot search with one search string? - maybe different steps for each variable?)   
-    ds1 = H_sfc.xarray('[U\|V]GRD:10 m')#.isel(step=[0,2,3,4])  
-    ds2 = H_sfc.xarray(':TMP:2 m')
-    ds3 = H_sfc.xarray('GUST')
+    # ds1 = H_sfc.xarray('[U\|V]GRD:10 m')#.isel(step=[0,2,3,4])
+    # ds2 = H_sfc.xarray(':TMP:2 m')
+    # ds3 = H_sfc.xarray('GUST', remove_grib=True) 
     
-    ds1 = ds1.sel(y=slice(100, 500), x=slice(100, 500))   # find way to slice with lat and lon!
-    ds2 = ds2.sel(y=slice(100, 500), x=slice(100, 500))   # find way to slice with lat and lon!
-    ds3 = ds3.sel(y=slice(100, 500), x=slice(100, 500))   # find way to slice with lat and lon!
+    def safe_xarray(herbie_obj, search_str):
+        for _ in range(5):  # Retry up to 5 times
+            try:
+                return herbie_obj.xarray(search_str, remove_grib=True)
+            except PermissionError:
+                time.sleep(1)  # Wait and retry
+        raise Exception(f"Failed to load {search_str} after multiple attempts.")
+
+    ds1 = safe_xarray(H_sfc, '[U\|V]GRD:10 m')
+    ds2 = safe_xarray(H_sfc, ':TMP:2 m')
+    ds3 = safe_xarray(H_sfc, 'GUST')
+        
+    
+    
+    ds1 = ds1.sel(y=slice(300, 600), x=slice(300, 800))   # find way to slice with lat and lon!
+    ds2 = ds2.sel(y=slice(300, 600), x=slice(300, 800))   # find way to slice with lat and lon!
+    ds3 = ds3.sel(y=slice(300, 600), x=slice(300, 800))   # find way to slice with lat and lon!
     
     ds_sfc = xr.merge([ds1,ds2, ds3],compat='minimal')
     
@@ -144,7 +159,7 @@ for date in date_range: # [:1]:
         
     # get native data during this day
     H_nat = herbie.fast.FastHerbie(
-            time_range[:2],
+            time_range[:],
             prioriy = 'google',
             model="hrrr",
             product="nat", # to get 15min steps backwards, set fxx to 1 and product "subh", otherwise "sfc", alternatively "nat"
@@ -154,8 +169,8 @@ for date in date_range: # [:1]:
     #H_nat.inventory()[["variable", "search_this"]].values 
            
     # download seperate xarrays for different search strings 
-    ds1 = H_nat.xarray(':UGRD:1 hybrid level:1 hour fcst|:VGRD:1 hybrid level:1 hour fcst')
-    ds1 = ds1.sel(y=slice(100, 500), x=slice(100, 500))  
+    ds1 = safe_xarray(H_nat, ':UGRD:1 hybrid level:1 hour fcst|:VGRD:1 hybrid level:1 hour fcst')
+    ds1 = ds1.sel(y=slice(300, 600), x=slice(300, 800))  
     
     ds_nat = xr.merge([ds1],compat='minimal')
 
@@ -183,10 +198,22 @@ for date in date_range: # [:1]:
 # Make a map plot
 to_plot = hrrr.isel(time=0).isel(step=0)
 
-plt.figure()
-plt.pcolormesh(to_plot.longitude, to_plot.latitude, to_plot.wspd10, cmap="viridis")
+fig, ax = plt.subplots(figsize=(10, 6), subplot_kw={'projection': ccrs.PlateCarree()})
+plt.pcolormesh(to_plot.longitude, to_plot.latitude, to_plot.wspd10, cmap="viridis", shading="auto", transform=ccrs.PlateCarree())
 plt.colorbar(label="Wind Speed (m/s)")
 
+# Add map features
+ax.add_feature(cfeature.COASTLINE)
+ax.add_feature(cfeature.BORDERS, linestyle=':')
+ax.add_feature(cfeature.STATES, linestyle='-', linewidth=0.5, edgecolor="gray") 
+ax.add_feature(cfeature.LAND, edgecolor='black', alpha=0.3)
+ax.add_feature(cfeature.LAKES, edgecolor='black', alpha=0.3)
+ax.add_feature(cfeature.RIVERS, edgecolor='blue', alpha=0.3)
+terrain = cfeature.NaturalEarthFeature(
+    category='physical',
+    name='shaded_relief',
+    scale='110m'  # High resolution
+)
 
 
 

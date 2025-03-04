@@ -71,7 +71,7 @@ def read_metar(network, start_year, start_month, start_day, end_year, end_month,
         csv_data = StringIO(response.text)
         metar = pd.read_csv(csv_data, delimiter=',', index_col=1, parse_dates=True, na_values="M")
     else:
-        metar = pd.DtaFrame()
+        metar = pd.DataFrame()
         print(f"Failed to retrieve Metar data: {response.status_code}")
         
     return metar
@@ -79,11 +79,11 @@ def read_metar(network, start_year, start_month, start_day, end_year, end_month,
 
 
 
-for network in ['NV_ASOS']:
+for network in ['NM_ASOS']:
 
     metar = read_metar(network=network, 
-                       start_year=2021, start_month=1, start_day=1, 
-                       end_year=2021, end_month=1, end_day=31)
+                       start_year=2021, start_month=11, start_day=1, 
+                       end_year=2021, end_month=11, end_day=28)
     
     
     # Extract station locations and elevations
