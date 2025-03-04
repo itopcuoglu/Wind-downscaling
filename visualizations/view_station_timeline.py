@@ -1,88 +1,75 @@
 import pandas as pd
-import matplotlib.pyplot as plt
-import datetime as dt
+import plotly.graph_objects as go
 import os
-from matplotlib.widgets import Button
+from datetime import datetime
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 file_path = os.path.join(BASE_DIR, "..", "data", "stations.csv")
-
 df = pd.read_csv(file_path)
 
-df["begints"] = pd.to_datetime(df["begints"], errors="coerce")
-df["endts"] = pd.to_datetime(df["endts"], errors="coerce")
+current_year = datetime.now().year
 
-df["endts"] = df["endts"].fillna(pd.Timestamp.today())
+def parse_year(x):
+    s = str(x).strip()
+    if s == '' or not s[:4].isdigit():
+        return current_year
+    return int(s[:4])
 
-df["display_name"] = df["station_name"] + " (" + df["state"] + ")"
+df['beg_year'] = pd.to_numeric(df['begints'].astype(str).str[:4], errors='coerce')
+df['end_year'] = df['endts'].fillna('').astype(str).apply(parse_year)
 
-df = df.sort_values("begints")
+df = df.dropna(subset=['beg_year'])
 
-STATIONS_PER_PAGE = 10
-num_stations = len(df)
-num_pages = (num_stations // STATIONS_PER_PAGE) + (num_stations % STATIONS_PER_PAGE > 0)
+df['duration_years'] = df['end_year'] - df['beg_year']
 
-X_START = dt.datetime(1980, 1, 1)
-X_END = pd.Timestamp.today() 
+max_duration = df['duration_years'].max()
+bins = [0, 1, 2, 5, 10, 20, max_duration + 1]
+labels = ['1 year', '2 years', '5 years', '10 years', '20 years', '20+ years']
+df['duration_bin'] = pd.cut(df['duration_years'], bins=bins, labels=labels, right=False)
 
-fig, ax = plt.subplots(figsize=(12, 6))
-plt.subplots_adjust(bottom=0.2)  
+states = sorted(df['state'].unique())
+state_data = {}
+for state in states:
+    state_df = df[df['state'] == state]
+    bin_counts = state_df['duration_bin'].value_counts().reindex(labels, fill_value=0)
+    state_data[state] = bin_counts.values.tolist()
 
+init_state = states[0]
+fig = go.Figure(data=[
+    go.Bar(
+        x=labels,
+        y=state_data[init_state],
+        name=init_state
+    )
+])
 
-def plot_page(page):
-    ax.clear()
-    start_idx = page * STATIONS_PER_PAGE
-    end_idx = min(start_idx + STATIONS_PER_PAGE, num_stations)
+buttons = []
+for state in states:
+    buttons.append(dict(
+        label=state,
+        method="update",
+        args=[{"y": [state_data[state]], "name": state},
+              {"title": f"Stations Operating Duration for {state}",
+               "yaxis": {"title": "Number of Stations"},
+               "xaxis": {"title": "Operating Duration Interval"}}]
+    ))
 
-    for i, row in df.iloc[start_idx:end_idx].iterrows():
-        ax.barh(row["display_name"], (row["endts"] - row["begints"]).days,
-                left=row["begints"], color='dodgerblue', alpha=0.75)
+fig.update_layout(
+    updatemenus=[dict(
+        active=0,
+        buttons=buttons,
+        direction="down",
+        x=0.0,
+        xanchor="left",
+        y=1.15,
+        yanchor="top"
+    )],
+    title=f"Stations Operating Duration for {init_state}",
+    xaxis_title="Operating Duration Interval",
+    yaxis_title="Number of Stations"
+)
 
-    ax.set_xlabel("Year")
-    ax.set_ylabel("Station (State)")
-    ax.set_title(f"Operational Period of Weather Stations (Page {page+1}/{num_pages})")
-
-    ax.set_xlim(X_START, X_END)
-
-    ax.xaxis.set_major_locator(plt.MultipleLocator(365*4))  
-    ax.set_xticks(pd.date_range(X_START, X_END, freq='4Y'))
-    ax.set_xticklabels([str(year.year) for year in pd.date_range(X_START, X_END, freq='4Y')])
-
-    ax.axvline(x=X_END, color='red', linestyle='--', label="Current")
-
-    plt.grid(axis="x", linestyle="--", alpha=0.5)
-    plt.legend(loc='upper left')
-
-    fig.canvas.draw()
-
-
-current_page = 0
-
-
-def next_page(event):
-    global current_page
-    if current_page < num_pages - 1:
-        current_page += 1
-        plot_page(current_page)
-
-
-def prev_page(event):
-    global current_page
-    if current_page > 0:
-        current_page -= 1
-        plot_page(current_page)
-
-
-axprev = plt.axes([0.7, 0.05, 0.1, 0.075])  
-axnext = plt.axes([0.81, 0.05, 0.1, 0.075])  
-bnext = Button(axnext, 'Next')
-bprev = Button(axprev, 'Previous')
-
-bnext.on_clicked(next_page)
-bprev.on_clicked(prev_page)
-
-plot_page(current_page)
-plt.show()
+fig.show()
 
 
 
