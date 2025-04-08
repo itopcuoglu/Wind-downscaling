@@ -13,7 +13,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 # Load the JSON data
-with open("US_stations.json", "r") as f:
+with open("NM_stations.json", "r") as f:
     data = json.load(f)
 
 # List to store matching station info (STID, wind sensor height, providers)
@@ -37,8 +37,14 @@ for station in data["STATION"]:
             # Collect relevant station info
             filtered_station_info.append({
                 "STID": station["STID"],
+                "name": station["NAME"],
+                "state": station["STATE"],
+                "network": station["SHORTNAME"],
+                "network_long": station["LONGNAME"],
                 "Wind Sensor Height (m)": pos,
-                "Provider": provider_str,
+                "lat": station["LATITUDE"],
+                "lon": station["LONGITUDE"],
+                #"Provider": provider_str,
                 "Start Time": start_time,
                 "End Time": end_time
             })
@@ -61,13 +67,13 @@ plt.xlabel("operating time (years)")
 
 
 # Count occurrences of each provider
-provider_counts = df['Provider'].value_counts()
+provider_counts = df['network'].value_counts()
 print(provider_counts)
 for provider, count in provider_counts.items():
     print(f"{provider}: {count}")
 
-# Save the dataframe to a CSV file if desired
-# df.to_csv("US_stations_under_10m.csv", index=False)
+# Save the dataframe to a CSV file
+df.to_csv("NM_stations_under_10m.csv", index=False)
 
 # Save the data as a JSON file
 # with open("stations_under_10m.json", "w") as f_out:
