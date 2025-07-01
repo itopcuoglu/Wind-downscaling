@@ -15,7 +15,11 @@ logs/
 *.log
 *.tmp
 
+data/
+*.parquet
+*.db
 
+config.py
 
 
 
