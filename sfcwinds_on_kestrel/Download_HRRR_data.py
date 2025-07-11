@@ -79,8 +79,8 @@ elif area == "US_SW":  # US Southwest
 
 
 # date range with one-day frequency
-date_range = pd.date_range(datetime(2014, 1, 1), 
-                           datetime(2025, 4, 1), 
+date_range = pd.date_range(datetime(2024, 1, 1), 
+                           datetime(2025, 1, 1), 
                            freq="D").tolist()[::-1]   # list starts from end
 
 # Forecast hour (0=analysis, 2 is recommended)
@@ -208,9 +208,7 @@ def process_hourly_data(timestamp, area, slicey, slicex, fxx):
             # Cleanup variables and attributes
             hrrr = hrrr.drop_vars(["boundaryLayerCloudLayer", "heightAboveGroundLayer", 
                                    "surface", "gribfile_projection", "time"], errors="ignore")
-            hrrr.attrs = {}   # REmove this to preserve attributes!!
-            for var in hrrr.data_vars:
-                hrrr[var].attrs = {}
+
     
             return hrrr.chunk(chunk_dict_hourly)  # Apply chunking to hourly files
     
@@ -225,7 +223,7 @@ def process_hourly_data(timestamp, area, slicey, slicex, fxx):
 
 
 
-
+start_time = time.perf_counter()
 
 
 #%%
@@ -282,13 +280,15 @@ if __name__ == "__main__":
         # Merge all hourly datasets into a daily file
         daily_hrrr = xr.concat(daily_datasets, dim="valid_time", combine_attrs="override") 
         daily_hrrr = daily_hrrr.chunk(chunk_dict_daily)
-        
+
+        # Sort by time
+        daily_hrrr = daily_hrrr.sortby('valid_time')
             
         # save daily file
         encoding = {
             var: {**comp, "chunksizes": (12, 1, 200, 200)} # 
-            if len(hrrr[var].dims) == 4 else {**comp, "chunksizes": (1, 200, 200)}
-            for var in hrrr.data_vars
+            if len(daily_hrrr[var].dims) == 4 else {**comp, "chunksizes": (1, 200, 200)}
+            for var in daily_hrrr.data_vars
             }
         daily_hrrr.to_netcdf(daily_file_path, encoding=encoding)
         # print ("daily file saved")
@@ -307,9 +307,23 @@ if __name__ == "__main__":
         # plt.plot(daily_hrrr.valid_time.values, daily_hrrr.isel(x=100, y=100).u10_h.values, ".", color="blue", label = "HRRR sfc")    
         # plt.plot(daily_hrrr.valid_time.values, daily_hrrr.isel(x=100, y=100).u10.values, ".", color="orange", label = "HRRR subh")    
                       
-        
-# Optionally close the Dask client after processing
-client.close()     
+
+
+
+# Timing
+end_time = time.perf_counter()
+elapsed_time = end_time - start_time
+print(f"Elapsed time: {elapsed_time:.4f} seconds")
+
+
+
+
+
+
+
+
+
+
         
 #%% H5 files              
                 

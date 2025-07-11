@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import glob
 import sys
+import time
 
 client = cdsapi.Client() # timeout=6000,debug=False)
 
@@ -19,12 +20,12 @@ def flush_print(*args, **kwargs):
 ### Definitions
 
 # Download data at surface level of pressure levels
-data_type = "land"  # select "surface" or "pressure_level" or "land"
+data_type = "surface"  # select "surface" or "pressure_level" or "land"
 
 # Time frame to download data
 
-start = "2024-07-01"
-end = "2024-07-31"
+start = "2023-01-01"
+end = "2024-12-31"
 
 dates = pd.date_range(start=start, end=end, freq="D")[::-1]  # Reverse order
 
@@ -53,6 +54,9 @@ if data_type == "surface":
     dataset = "reanalysis-era5-single-levels"
     
     for date in dates:   # downloading files in a loop, because otherwise all data would be stored in a single file.
+
+        start_time = time.perf_counter()
+        
         year = date.strftime('%Y')
         month = date.strftime('%m')
         day = date.strftime('%d')
@@ -111,6 +115,12 @@ if data_type == "surface":
         target = daily_file_path
     
         client.retrieve(dataset, request, target)
+
+
+        # Timing
+        end_time = time.perf_counter()
+        elapsed_time = end_time - start_time
+        print(f"Elapsed time: {elapsed_time:.4f} seconds")
 
 
 

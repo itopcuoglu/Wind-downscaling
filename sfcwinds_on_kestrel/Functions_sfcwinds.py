@@ -37,3 +37,30 @@ def find_nearest_obs(obs, target_lat = Sandia_coords[0], target_lon = Sandia_coo
     ts = obs[obs.stid == closest_station]
 
     return ts
+
+
+def wspd_wdir_from_uv(u, v):
+    """ 
+        u   eastward wind component
+        v   northward wind component
+        wdir   direction where wind is coming from
+    """
+    
+    wspd = (u**2 + v**2)**0.5
+    wdir = np.degrees(np.arctan2(u, v)) +180
+
+    return wspd, wdir
+
+def uv_from_wspd_wdir(wspd, wdir):
+    """ 
+        u   eastward wind component
+        v   northward wind component
+        wdir   direction where wind is coming from, input in degrees
+    """
+
+    wind_dir_rad = np.radians(wdir)
+    u = -wspd * np.sin(wind_dir_rad)
+    v = -wspd * np.cos(wind_dir_rad)    
+
+    return u,v
+

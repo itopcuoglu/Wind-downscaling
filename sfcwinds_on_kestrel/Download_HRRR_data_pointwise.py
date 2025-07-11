@@ -45,15 +45,14 @@ https://www.nco.ncep.noaa.gov/pmb/products/hrrr/hrrr.t00z.wrfnatf00.grib2.shtml
 #%% Define
 
 # Folder to save datasets
-save_folder = "/kfs2/projects/sfcwinds/HRRR_pointwise"
-#save_folder = "HRRR"
+save_folder = "/kfs2/projects/sfcwinds/HRRR_pointwise_new"
 
     
 G3P3 = (-106.510100,  34.962400, "G3P3")
 
 
 # date range with one-day frequency
-date_range = pd.date_range(datetime(2025, 3, 1), 
+date_range = pd.date_range(datetime(2025, 3, 21), 
                            datetime(2025, 6, 3), 
                            freq="h").tolist()[::-1]   # list starts from end
 
@@ -65,7 +64,7 @@ date_range = pd.date_range(datetime(2025, 3, 1),
 
 
 # Forecast hour (0=analysis, 2 is recommended)
-fxx = [0,1,2,3,4,8,12,16]    
+fxx = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17]  
 
 # Chunk dictionaries
 chunk_dict_hourly = {"valid_time": 1, "isobaricInhPa": 1, "y": 200, "x": 200}
@@ -103,7 +102,7 @@ def process_hourly_data(timestamp, loc, fxx):
         
         try:
 
-            H_subh = FastHerbie([timestamp], model='hrrr', product='subh', fxx=fxx, verbose=False)
+            H_subh = FastHerbie([timestamp], model='hrrr', product='subh', fxx=fxx, verbose=False)  
             
             #H_subh.inventory().variable.values   
             #H_subh.inventory()[["variable", "search_this"]].values 
@@ -203,7 +202,6 @@ if __name__ == "__main__":
             if hrrr is not None:
   
                 # Save hourly file
-                hourly_file_path = os.path.join(save_folder, f"hrrr_{G3P3[2]}_{date.date()}_{date.hour}h.nc")
                 encoding = {
                     var: {**comp, "chunksizes": (1)} # 
                     for var in hrrr.data_vars
