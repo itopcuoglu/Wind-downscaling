@@ -53,7 +53,7 @@ G3P3 = (-106.510100,  34.962400, "G3P3")
 
 # date range with one-day frequency
 date_range = pd.date_range(datetime(2025, 3, 21), 
-                           datetime(2025, 6, 3), 
+                           datetime(2025, 8, 3), 
                            freq="h").tolist()[::-1]   # list starts from end
 
 # # Get time ranges from obs file
@@ -64,7 +64,10 @@ date_range = pd.date_range(datetime(2025, 3, 21),
 
 
 # Forecast hour (0=analysis, 2 is recommended)
-fxx = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17]  
+fxx = list(range(0, 18)) #  (i.e., 0–18)
+
+
+
 
 # Chunk dictionaries
 chunk_dict_hourly = {"valid_time": 1, "isobaricInhPa": 1, "y": 200, "x": 200}
@@ -184,7 +187,7 @@ if __name__ == "__main__":
             
             print(date)
             
-            hourly_file_path = os.path.join(save_folder, f"hrrr_{G3P3[2]}_{date.date()}_{date.hour}h.nc")
+            hourly_file_path = os.path.join(save_folder, f"hrrr_{G3P3[2]}_{date.date()}_{date.hour:02d}h.nc")
             
  
             # # Check if file already exists, exit loop if so

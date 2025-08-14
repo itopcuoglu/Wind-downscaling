@@ -20,6 +20,7 @@ from dask.distributed import Client, LocalCluster
 
 warnings.filterwarnings("ignore", message="Will not remove GRIB file because it previously existed.")
 warnings.filterwarnings("ignore", category=FutureWarning, message=".*decode_timedelta.*")
+warnings.filterwarnings("ignore", category=pd.errors.SettingWithCopyWarning)
 
 """
 HRRR model documentation:
@@ -39,13 +40,13 @@ G3P3 = (-106.510100,  34.962400, "G3P3")
 
 # date range with one-hour frequency, reversed (starts from end)
 date_range = pd.date_range(datetime(2025, 3, 21), 
-                           datetime(2025, 6, 3), 
+                           datetime(2025, 5, 16), 
                            freq="h").tolist()[::-1]
 
 # Forecast hour(s)
 fxx = list(range(0,18))
 
-# Define synoptic hours (48h forecast range for hourly files at these times)
+# Define synoptic hours (48h forecast range for hourly files at these times, but only for hourly data, not subhourly)
 synoptic_hours = [0, 6, 12, 18]
 
 # Define compression settings
@@ -59,7 +60,7 @@ def safe_xarray(herbie_obj, search_str):
         try:
             return herbie_obj.xarray(search_str, remove_grib=True)
         except PermissionError:
-            time.sleep(1)  # Wait and retry
+            time.sleep(0.5)  # Wait and retry
     raise Exception(f"Failed to load {search_str} after multiple attempts.")
 
 def process_hourly_data(timestamp, loc, fxx):
@@ -118,12 +119,12 @@ def process_hourly_data(timestamp, loc, fxx):
             print(f"Error: {e}")
             attempt += 1
             print(f"Attempt {attempt} failed. Retrying...")
-            time.sleep(1)
+            time.sleep(0.5)
     return None
 
 @delayed
 def process_and_save(timestamp, loc, fxx, save_folder, comp):
-    hourly_file_path = os.path.join(save_folder, f"hrrr_{loc[2]}_{timestamp.date()}_{timestamp.hour}h.nc")
+    hourly_file_path = os.path.join(save_folder, f"hrrr_{loc[2]}_{timestamp.date()}_{timestamp.hour:02d}h.nc")
     if os.path.exists(hourly_file_path):
         print(f"File already exists: {hourly_file_path}.")
         return "Exists"
@@ -150,6 +151,11 @@ def process_in_batches(dates, batch_size=100):
 
 if __name__ == "__main__":
 
+    # Start Dask LocalCluster and Client for parallelism
+    cluster = LocalCluster()
+    client = Client(cluster)
+    print(f"Dask dashboard available at: {client.dashboard_link}")
+
     # Process in batches for large date ranges
-    results = process_in_batches(date_range, batch_size=100)
+    results = process_in_batches(date_range, batch_size=30)
     print("All results:", results)

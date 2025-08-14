@@ -59,7 +59,7 @@ save_folder = "/kfs2/projects/sfcwinds/HRRR"
 
 # Define area to download (boundaries of download area) 
 # Have not found a way to slice by lat and lon directly, use x,y instead (below)
-area = "US"   #   "NM_AZ", "US", "US_SW"
+area = "US_SW"   #   "NM_AZ", "US", "US_SW"
 
 if area == "NM_AZ":   # New Mexico and Arizona
     slicex = slice(300, 800)
@@ -75,8 +75,8 @@ elif area == "US_SW":  # US Southwest
 
 
 # date range with one-day frequency
-date_range = pd.date_range(datetime(2024, 1, 1), 
-                           datetime(2025, 1, 1), 
+date_range = pd.date_range(datetime(2015, 1, 1), 
+                           datetime(2020, 12,1), 
                            freq="D").tolist()[::-1]   # list starts from end
 
 # Forecast hour (0=analysis, 2 is recommended)
@@ -104,7 +104,7 @@ def safe_xarray(herbie_obj, search_str):
         try:
             return herbie_obj.xarray(search_str, remove_grib=True)
         except PermissionError:
-            time.sleep(1)  # Wait and retry
+            time.sleep(0.5)  # Wait and retry
     raise Exception(f"Failed to load {search_str} after multiple attempts.")
     
     
@@ -152,8 +152,8 @@ def process_hourly_data(timestamp, area, slicey, slicex, fxx):
                 safe_xarray(H_sfc, '[U|V]GRD:10 m'),
                 safe_xarray(H_sfc, '[U|V]GRD:80 m').rename({"u": "u80", "v": "v80"}),
                 safe_xarray(H_sfc, ':DPT:2 m above ground:2 hour fcst'),
-                safe_xarray(H_sfc, ':TCDC:boundary layer cloud layer:2 hour fcst'),
-                safe_xarray(H_sfc, ':CAPE:0-3000 m above ground:2 hour fcst')
+                #safe_xarray(H_sfc, ':TCDC:boundary layer cloud layer:2 hour fcst'),  # only available in HRRRv4
+                #safe_xarray(H_sfc, ':CAPE:0-3000 m above ground:2 hour fcst')   # only available in HRRRv4
             ], compat='minimal')
     
             ds_sfc = ds_sfc.sel(y=slicey, x=slicex).expand_dims(dim="valid_time")
@@ -214,7 +214,7 @@ def process_hourly_data(timestamp, area, slicey, slicex, fxx):
             
             attempt += 1
             flush_print(f"Attempt {attempt} failed. Retrying...")
-            time.sleep(1)  # Wait before retrying        
+            time.sleep(0.5)  # Wait before retrying        
 
 
 
@@ -236,6 +236,10 @@ if __name__ == "__main__":
     # cluster = LocalCluster(n_workers=16, threads_per_worker=1, memory_limit="15GB")  # Adjust the number of workers based on the CPUs per task in SLURM
     # client = Client(cluster)
 
+    # cluster = LocalCluster(n_workers=1, threads_per_worker=1, memory_limit="240GB")
+    # client = Client(cluster)
+    # print(f"Dask dashboard available at: {client.dashboard_link}")
+
     
  
     # loop over days in date_range
@@ -251,6 +255,7 @@ if __name__ == "__main__":
             continue
 
         daily_datasets  = []  # Store hourly datasets for the day
+
         delayed_datasets  = []  # for dask processing
         try:
             del daily_hrrr
@@ -291,7 +296,7 @@ if __name__ == "__main__":
             for var in daily_hrrr.data_vars
             }
         daily_hrrr.to_netcdf(daily_file_path, encoding=encoding)
-        # print ("daily file saved")
+        # print ("daily file saved "+daily_file_path)
         
         
            
