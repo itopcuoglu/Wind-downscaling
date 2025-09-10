@@ -75,8 +75,8 @@ elif area == "US_SW":  # US Southwest
 
 
 # date range with one-day frequency
-date_range = pd.date_range(datetime(2015, 1, 1), 
-                           datetime(2020, 12,1), 
+date_range = pd.date_range(datetime(2014, 1, 1), 
+                           datetime(2016, 8, 22), 
                            freq="D").tolist()[::-1]   # list starts from end
 
 # Forecast hour (0=analysis, 2 is recommended)
@@ -104,14 +104,14 @@ def safe_xarray(herbie_obj, search_str):
         try:
             return herbie_obj.xarray(search_str, remove_grib=True)
         except PermissionError:
-            time.sleep(0.5)  # Wait and retry
+            time.sleep(1)  # Wait and retry
     raise Exception(f"Failed to load {search_str} after multiple attempts.")
     
     
 def process_hourly_data(timestamp, area, slicey, slicex, fxx):
     """Retrieve, process, and return hourly HRRR dataset"""
     
-    max_retries = 10  # Set a limit to avoid infinite loops
+    max_retries = 5  # Set a limit to avoid infinite loops
     attempt = 0
     
     while attempt < max_retries:
@@ -123,7 +123,12 @@ def process_hourly_data(timestamp, area, slicey, slicex, fxx):
 
     
             H_sfc = Herbie(timestamp, model='hrrr', product='sfc', fxx=fxx, verbose=False)
-            H_subh = Herbie(timestamp, model='hrrr', product='subh', fxx=fxx, verbose=False)
+            
+            if timestamp > pd.to_datetime('2018-09-16 00:00:00'):   # this changed on the given date, also only forecast step 0 available in all subhourly files before this date
+                H_subh = Herbie(timestamp, model='hrrr', product='subh', fxx=fxx, verbose=False)
+            else:
+                H_subh = Herbie(timestamp, model='hrrr', product='subh', fxx_subh=fxx, verbose=False)
+
             
             #H_sfc.inventory().variable.values   
             #H_sfc.inventory()[["variable", "search_this"]].values 
@@ -138,13 +143,16 @@ def process_hourly_data(timestamp, area, slicey, slicex, fxx):
             
             
             df = H_subh.inventory()[["variable", "search_this"]]
-            filtered_df = df[df["search_this"].str.contains(r"\b(?:ugrd|vgrd)\b", case=False, na=False) & 
-                             df["search_this"].str.contains("ave", case=False, na=False)]
+            if timestamp > pd.to_datetime('2016-08-21 00:00:00'):   # search string name changed on the given date
+                filtered_df = df[df["search_this"].str.contains(r"\b(?:ugrd|vgrd)\b", case=False, na=False) & 
+                                 df["search_this"].str.contains("ave", case=False, na=False)]
+            else:
+                filtered_df = df[df["search_this"].str.contains(r"\b(?:ugrd|vgrd):10\b", case=False, na=False)]                
             wind_search_string_subh = "|".join(filtered_df["search_this"].drop_duplicates().values)
-                    
+                  
     
             
-            # Surface data
+            ### Surface data
             ds_sfc = xr.merge([
                 safe_xarray(H_sfc, wind_search_string_sfc),
                 safe_xarray(H_sfc, ':TMP:2 m'),
@@ -152,69 +160,99 @@ def process_hourly_data(timestamp, area, slicey, slicex, fxx):
                 safe_xarray(H_sfc, '[U|V]GRD:10 m'),
                 safe_xarray(H_sfc, '[U|V]GRD:80 m').rename({"u": "u80", "v": "v80"}),
                 safe_xarray(H_sfc, ':DPT:2 m above ground:2 hour fcst'),
-                #safe_xarray(H_sfc, ':TCDC:boundary layer cloud layer:2 hour fcst'),  # only available in HRRRv4
-                #safe_xarray(H_sfc, ':CAPE:0-3000 m above ground:2 hour fcst')   # only available in HRRRv4
-            ], compat='minimal')
-    
-            ds_sfc = ds_sfc.sel(y=slicey, x=slicex).expand_dims(dim="valid_time")
+            ], compat='minimal')   # needs to be minimal to keep the isobaricInhPa dimension
+
+            # In cases when u and v have only one value, isobaricInhPa is not a dimension
+            if "isobaricInhPa" not in ds_sfc.dims:
+                ds_sfc = ds_sfc.assign(
+                    u=ds_sfc.u.expand_dims(isobaricInhPa=[ds_sfc.isobaricInhPa.values]),
+                    v=ds_sfc.v.expand_dims(isobaricInhPa=[ds_sfc.isobaricInhPa.values])
+                )  
+
+            # Add step as dimension when only one step in the data (then it's not a dimension)
+            if "step" not in ds_sfc.dims:
+                ds_sfc = (
+                    ds_sfc
+                    .expand_dims({"step": ds_sfc.step.values[np.newaxis]})
+                    .assign_coords(
+                        step=("step", ds_sfc.step.values[np.newaxis]),
+                        valid_time=("step", ds_sfc.valid_time.values[np.newaxis])
+                    )
+                )
+            
+            # Use only the fxx forecast step (and 45min back for subh)
+            ds_sfc = ds_sfc.sel(
+                step=(ds_sfc.step <= pd.Timedelta(f"{fxx}h")) &
+                      (ds_sfc.step > pd.Timedelta(f"{fxx-1}h"))
+            )
+
+            # Slice spatially and use the valid_time dimension instead step
+            ds_sfc = ds_sfc.sel(y=slicey, x=slicex).swap_dims({"step": "valid_time"})
             
             # ds_sfc['wspd10'] = (ds_sfc.u10**2 + ds_sfc.v10**2)**0.5
             # ds_sfc['wdir10'] = np.degrees(np.arctan2(ds_sfc.u10, ds_sfc.v10)) +180
             
             ds_sfc = ds_sfc.rename({"u10": "u10_h",
                                     "v10": "v10_h",
+                                    "gust": "gust_h",
                                     # "wspd10": "wspd10_h",
                                     # "wdir10": "wdir10_h"                              
                                     })
+        
     
-            # Subhourly data
+    
+            ### Subhourly data
             ds_subh = xr.merge([
                 safe_xarray(H_subh, wind_search_string_subh),
                 # safe_xarray(H_subh, ':TMP:2 m|DPT')#.isel(step=[0,1,2])
                 safe_xarray(H_subh, 'GUST')
-            ], compat='minimal')
-    
+            ], compat='override')   # needs to be override to keep the valid_time dimension
+
+            # Add step as dimension when only one step in the data (then it's not a dimension)
+            if "step" not in ds_subh.dims:
+                ds_subh = (
+                    ds_subh
+                    .expand_dims({"step": ds_subh.step.values[np.newaxis]})
+                    .assign_coords(
+                        step=("step", ds_subh.step.values[np.newaxis]),
+                        valid_time=("step", ds_subh.valid_time.values[np.newaxis])
+                    )
+                )
+
+            
+            # Use only the fxx forecast step (and 45min back for subh)
+            ds_subh = ds_subh.sel(
+                step=(ds_subh.step <= pd.Timedelta(f"{fxx}h")) &
+                      (ds_subh.step > pd.Timedelta(f"{fxx-1}h"))
+            )
+
+            # Slice spatially and use the valid_time dimension instead step
             ds_subh = ds_subh.sel(y=slicey, x=slicex).swap_dims({"step": "valid_time"})
-            
-            
-            # # get native data during this day - probably not needed for surface wind analysis
-            # H_nat = herbie.fast.FastHerbie(
-            #         time_range[:],
-            #         prioriy = 'google',
-            #         model="hrrr",
-            #         product="nat", # to get 15min steps backwards, set fxx to 1 and product "subh", otherwise "sfc", alternatively "nat"
-            #         fxx=[2]
-            #     )
-           
-            # #H_nat.inventory()[["variable", "search_this"]].values 
-                  
-            # # download seperate xarrays for different search strings 
-            # ds1 = safe_xarray(H_nat, ':UGRD:1 hybrid level:2 hour fcst|:VGRD:1 hybrid level:2 hour fcst')
-            # ds1 = ds1.sel(y=slicey, x=slicex)  
-           
-            # ds_nat = xr.merge([ds1],compat='minimal')
-       
-            # # Add the time dimension
-            # ds_nat = ds_nat.expand_dims(dim="valid_time")
-            
+                               
+            try:                   
+                ds_subh = ds_subh.rename({"avg_10u": "u10",
+                                    "avg_10v": "v10",                            
+                                    })  
+            except:
+                pass
     
             # Merge hourly and subhourly datasets
-            hrrr = xr.merge([ds_sfc, ds_subh], compat='override')
+            hrrr = xr.merge([ds_sfc, ds_subh])
     
             # Cleanup variables and attributes
-            hrrr = hrrr.drop_vars(["boundaryLayerCloudLayer", "heightAboveGroundLayer", 
+            hrrr = hrrr.drop_vars(["boundaryLayerCloudLayer", "heightAboveGroundLayer", "heightAboveGround",
                                    "surface", "gribfile_projection", "time"], errors="ignore")
 
     
             return hrrr.chunk(chunk_dict_hourly)  # Apply chunking to hourly files
-    
+        
         except Exception as e:
     
             flush_print(f"Error: {e}")
             
             attempt += 1
             flush_print(f"Attempt {attempt} failed. Retrying...")
-            time.sleep(0.5)  # Wait before retrying        
+            time.sleep(1)  # Wait before retrying        
 
 
 
@@ -245,58 +283,63 @@ if __name__ == "__main__":
     # loop over days in date_range
     for date in date_range[:]: 
         
-        flush_print(date)
-        
-        daily_file_path = os.path.join(save_folder, f"hrrr_{area}_{date.date()}.nc")
-        
-        # Check if file already exists, exit loop if so
-        if os.path.exists(daily_file_path):
-            flush_print(f"File already exists: {daily_file_path}.")
-            continue
+        flush_print(date.date())
 
-        daily_datasets  = []  # Store hourly datasets for the day
-
-        delayed_datasets  = []  # for dask processing
         try:
-            del daily_hrrr
+            
+            daily_file_path = os.path.join(save_folder, f"hrrr_{area}_{date.date()}.nc")
+            
+            # # Check if file already exists, exit loop if so
+            # if os.path.exists(daily_file_path):
+            #     flush_print(f"File already exists: {daily_file_path}.")
+            #     continue
+
+            daily_datasets  = []  # Store hourly datasets for the day
+
+            delayed_datasets  = []  # for dask processing
+            try:
+                del daily_hrrr
+            except:
+                pass
+        
+            for hour in range(-fxx+1, fxx+21, 1):  # Looping to hours, so that valid_date goes from 0h to 24h
+                
+                timestamp = date + pd.to_timedelta(hour, "h")
+                    
+                # Load and process  hourly files 
+                
+                # Schedule processing as a Dask delayed computation
+                delayed_hrrr = delayed(process_hourly_data)(timestamp, area, slicey, slicex, fxx)
+                delayed_datasets.append(delayed_hrrr)
+
+            # Compute all hourly datasets in parallel
+            daily_datasets = list(compute(*delayed_datasets))
+
+            # Filter out None in case of failures
+            daily_datasets = [ds for ds in daily_datasets if ds is not None]
+
+            if not daily_datasets:
+                continue
+        
+            # Merge all hourly datasets into a daily file
+            daily_hrrr = xr.concat(daily_datasets, dim="valid_time", combine_attrs="override") 
+            daily_hrrr = daily_hrrr.chunk(chunk_dict_daily)
+
+            # Sort by time
+            daily_hrrr = daily_hrrr.sortby('valid_time')
+            
+                
+            # save daily file
+            encoding = {
+                var: {**comp, "chunksizes": (12, 1, 200, 200)} # 
+                if len(daily_hrrr[var].dims) == 4 else {**comp, "chunksizes": (1, 200, 200)}
+                for var in daily_hrrr.data_vars
+                }
+            daily_hrrr.to_netcdf(daily_file_path, encoding=encoding)
+            # print ("daily file saved "+daily_file_path)
+
         except:
             pass
-    
-        for hour in range(-fxx+1, fxx+21, 1):  # Looping to hours, so that valid_date goes from 0h to 24h
-            
-            timestamp = date + pd.to_timedelta(hour, "h")
-                 
-            # Load and process  hourly files 
-            
-            # Schedule processing as a Dask delayed computation
-            delayed_hrrr = delayed(process_hourly_data)(timestamp, area, slicey, slicex, fxx)
-            delayed_datasets.append(delayed_hrrr)
-
-        # Compute all hourly datasets in parallel
-        daily_datasets = list(compute(*delayed_datasets))
-
-        # Filter out None in case of failures
-        daily_datasets = [ds for ds in daily_datasets if ds is not None]
-
-        if not daily_datasets:
-            continue
-    
-        # Merge all hourly datasets into a daily file
-        daily_hrrr = xr.concat(daily_datasets, dim="valid_time", combine_attrs="override") 
-        daily_hrrr = daily_hrrr.chunk(chunk_dict_daily)
-
-        # Sort by time
-        daily_hrrr = daily_hrrr.sortby('valid_time')
-        
-            
-        # save daily file
-        encoding = {
-            var: {**comp, "chunksizes": (12, 1, 200, 200)} # 
-            if len(daily_hrrr[var].dims) == 4 else {**comp, "chunksizes": (1, 200, 200)}
-            for var in daily_hrrr.data_vars
-            }
-        daily_hrrr.to_netcdf(daily_file_path, encoding=encoding)
-        # print ("daily file saved "+daily_file_path)
         
         
            

@@ -17,9 +17,9 @@ def find_closest_HRRR_loc(hrrr, hrrr_coords_to_use):
     closest_lat = hrrr.latitude.values[idx]
     closest_lon = hrrr.longitude.values[idx]
 
-    hrrr_loc =hrrr.sel(x=idx[1], y=idx[0])
-    
-    return hrrr_loc
+    hrrr_loc =hrrr.isel(y=idx[0], x=idx[1])
+
+    return hrrr_loc, closest_lat, closest_lon, idx
 
 
 
@@ -37,6 +37,22 @@ def find_nearest_obs(obs, target_lat = Sandia_coords[0], target_lon = Sandia_coo
     ts = obs[obs.stid == closest_station]
 
     return ts
+
+
+# distance in meters between two lat/lon points
+def haversine(lat1, lon1, lat2, lon2):
+    """
+    Calculate the great-circle distance between two points on the Earth (specified in decimal degrees).
+    Returns distance in meters.
+    """
+    R = 6371000  # Earth radius in meters
+    phi1 = np.radians(lat1)
+    phi2 = np.radians(lat2)
+    dphi = np.radians(lat2 - lat1)
+    dlambda = np.radians(lon2 - lon1)
+    a = np.sin(dphi/2.0)**2 + np.cos(phi1) * np.cos(phi2) * np.sin(dlambda/2.0)**2
+    c = 2 * np.arctan2(np.sqrt(a), np.sqrt(1 - a))
+    return R * c
 
 
 def wspd_wdir_from_uv(u, v):
@@ -64,3 +80,33 @@ def uv_from_wspd_wdir(wspd, wdir):
 
     return u,v
 
+
+def rotate_to_true_north(u10, v10, lon):
+    """
+    Rotate HRRR 10m wind components to true north orientation.
+
+    Parameters:
+    - u10, v10: xarray.DataArrays of shape (time, step)
+    - lon: longitude (scalar, degrees east)
+    - rotcon_p: rotation constant (default: sin(lat_tan), 38.5° for HRRR)
+    - lon_xx_p: reference meridian (default: -97.5°)
+
+    Returns:
+    - un10, vn10: xarray.DataArrays of rotated wind components relative to True North
+    """
+    
+    lon = ((lon + 180) % 360) - 180  # make between -180 and 180
+                             
+
+    rotcon_p = np.sin(np.radians(38.5))  # for Lambert Conformal (HRRR), 0.6225
+    lon_xx_p = -97.5  # reference meridian
+
+    angle2 = rotcon_p * (lon - lon_xx_p) * np.pi / 180
+    sinx2 = np.sin(angle2)
+    cosx2 = np.cos(angle2)
+
+    # Apply rotation
+    un10 = cosx2 * u10 + sinx2 * v10
+    vn10 = -sinx2 * u10 + cosx2 * v10
+
+    return un10, vn10

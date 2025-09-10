@@ -20,11 +20,11 @@ def flush_print(*args, **kwargs):
 ### Definitions
 
 # Download data at surface level of pressure levels
-data_type = "surface"  # select "surface" or "pressure_level" or "land"
+data_type = "land"  # select "surface" or "pressure_level" or "land"
 
 # Time frame to download data
 
-start = "2023-01-01"
+start = "2000-01-01"
 end = "2024-12-31"
 
 dates = pd.date_range(start=start, end=end, freq="D")[::-1]  # Reverse order
