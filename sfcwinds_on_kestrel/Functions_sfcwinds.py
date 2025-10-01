@@ -1,4 +1,5 @@
 import numpy as np
+import xarray as xr
 
 Sandia_coords = [34.96226779999999, -106.5096873]
 
@@ -7,16 +8,25 @@ def find_closest_HRRR_loc(hrrr, hrrr_coords_to_use):
     """
     hrrr: HRRR xarray
     hrrr_coords_to_use: array -> [lat, lon]
-    
-    
+
+    Use this function on a daily HRRR file with variables:
+        latitude (y, x)
+        longitude (y, x)
     
     """
 
+    # Observations use longitudes between -180 to 180, transform HRRR to that
+    hrrr['longitude'] = xr.where(hrrr['longitude'] > 180, hrrr['longitude'] - 360, hrrr['longitude'])
+
+    # Find the shortest distance to the given lat/lon point
     dist = (hrrr['longitude'].values - hrrr_coords_to_use[1])**2 + (hrrr['latitude'].values - hrrr_coords_to_use[0])**2
+    
+    # Get the index, lat and lon of the minimum distance
     idx = np.unravel_index(np.argmin(dist), dist.shape)
     closest_lat = hrrr.latitude.values[idx]
     closest_lon = hrrr.longitude.values[idx]
 
+    # HRRR data at that index
     hrrr_loc =hrrr.isel(y=idx[0], x=idx[1])
 
     return hrrr_loc, closest_lat, closest_lon, idx
