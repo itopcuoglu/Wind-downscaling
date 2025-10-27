@@ -5,6 +5,8 @@ import glob
 import matplotlib.pyplot as plt
 import numpy as np
 from Functions_sfcwinds import *
+#from nco import Nco
+#nco=Nco()
 
 # Enable interactive backend when running in IPython, ignore in plain Python scripts (this is for data inspection with interactive plots)
 try:
@@ -51,7 +53,7 @@ stations = ["NMC60", "NMC63"]   #  meta[meta.state == "NM"].station_id.values  #
 
 
 # First record all the station locations
-
+# The number of stations that are probed for
 len_station=len(stations);
 # Array to hold all the station locations
 x_closest=[0] * len_station
@@ -85,26 +87,25 @@ for station in stations:
     # something like 
 
 print(f"File list: {file_list[:]}")
-    #hrrr = xr.open_mfdataset(file_list[:], concat_dim ="valid_time",combine='nested', chunks="auto", parallel = True, engine='netcdf4', decode_timedelta= True)
 
 # Sweep over all files, one file at a time
 for ifile in file_list:
     print(f"filenameis {ifile}")
-    # When there are multiple stations, hrrr will have an extra dimension
-    # that is equal to the number of stations
+    # Opening ifile, which is only one file
     hrrr = xr.open_dataset(ifile, chunks="auto", engine='netcdf4', decode_timedelta= True)
-    # but this is very unefficient (opening all HRRR files for each station)
-    # maybe better open a HRRR file, extract data for all stations, append to each station file, then close the HRRR file and open the next one
 
 # Sweep over all stations within each file loop
+# This way, only one file is open whiledata for several
+# stations are being extracted
     for station in stations:
         print(f"Station name is {station}")
         st_ind=stations.index(station)
         print(f"Station index is {st_ind}")
-        hrrr_loc = hrrr.sel(x = x_closest[st_ind], y = y_closest[st_ind]) # include a check that HRRR lat and lon is not too far (3km?) away from the station
+        hrrr_loc = hrrr.isel(x = x_closest[st_ind], y = y_closest[st_ind]) # include a check that HRRR lat and lon is not too far (3km?) away from the station
         print(f"Location for station {station} is {x_closest[st_ind]} {y_closest[st_ind]}") 
     # for testing: distance between station and closest HRRR grid point (should be below 1.5km at 3km grid spacing)
-    # distance_m = haversine(hrrr_loc.latitude.values[-1], hrrr_loc.longitude.values[-1], lat, lon)
+        #distance_m = haversine(hrrr_loc.latitude.values[-1], hrrr_loc.longitude.values[-1], lat, lon)
+        #print(f"Distance is {distance_m}")
 
     # correct the HRRR wind direction (model coordinate system into Noth-East)
         hrrr_loc["u10"], hrrr_loc["v10"] = rotate_to_true_north(hrrr_loc["u10"], hrrr_loc["v10"], hrrr_loc["longitude"])
@@ -114,12 +115,33 @@ for ifile in file_list:
 
     # Make some plots comparing wind speed and direction for one / a few stations (compare HRRR to observations)
     # see below for code example
+    # This is yet to be done properly
 
     # save HRRR data for the current station
-        file_path = os.path.join(save_folder, f"HRRR_{station}.nc")
+        # Extracting the date suffix from each hrrr file name
+        sub_str=ifile[-13:-3]
+        print(f"Subtracted string {sub_str}")
+        # Appending the extracted string to the station name
+        # so that each station can have individual files for each date
+        # that are to be merged later
+        file_path = os.path.join(save_folder, f"HRRR_{station}_{sub_str}.nc")
         hrrr_loc.to_netcdf(file_path,mode='a')  # there are some encoding options if file size or write speed is an issue, see the download scripts.
 
     hrrr.close()
+
+
+# Merge the individual files for each station
+for station in stations:
+    date_String = "*"   # wildcard for dates
+    file_part_pattern = os.path.join(save_folder, f"HRRR_{station}_{date_String}*.nc")
+    file_part_list = sorted(glob.glob(file_part_pattern))
+    # Load the datewise separated files for one station only
+    # using open_mfdataset
+    # This allows for concatenating over valid_time
+    concat_data = xr.open_mfdataset(file_part_list[:], concat_dim ="valid_time",combine='nested', chunks="auto", parallel = True, engine='netcdf4', decode_timedelta= True)
+    total_output_path = os.path.join(save_folder, f"HRRR_{station}.nc")
+    concat_data.to_netcdf(total_output_path,mode='w')  
+    
 
 # # #Read observations according to station filter -= read the actual data
 
