@@ -39,8 +39,8 @@ save_folder = "/kfs2/projects/sfcwinds/HRRR_pointwise_new"
 G3P3 = (-106.510100,  34.962400, "G3P3")
 
 # date range with one-hour frequency, reversed (starts from end)
-date_range = pd.date_range(datetime(2025, 3, 21), 
-                           datetime(2025, 5, 16), 
+date_range = pd.date_range(datetime(2025, 8, 2), 
+                           datetime(2025, 10, 12), 
                            freq="h").tolist()[::-1]
 
 # Forecast hour(s)

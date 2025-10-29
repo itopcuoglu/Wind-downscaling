@@ -53,7 +53,7 @@ G3P3 = (-106.510100,  34.962400, "G3P3")
 
 # date range with one-day frequency
 date_range = pd.date_range(datetime(2025, 3, 21), 
-                           datetime(2025, 8, 3), 
+                           datetime.now(), 
                            freq="h").tolist()[::-1]   # list starts from end
 
 # # Get time ranges from obs file
@@ -64,7 +64,7 @@ date_range = pd.date_range(datetime(2025, 3, 21),
 
 
 # Forecast hour (0=analysis, 2 is recommended)
-fxx = list(range(0, 18)) #  (i.e., 0–18)
+fxx = list(range(0, 18)) #  (i.e., 0, 18)
 
 
 

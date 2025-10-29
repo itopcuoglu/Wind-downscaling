@@ -81,6 +81,10 @@ latitude_stations = obs.groupby('station_id')['lat'].apply(list)
 longitude_stations = obs.groupby('station_id')['lon'].apply(list)
 station_id = obs['station_id'].unique()   
 
+obs_stations = obs.groupby('station_id')[['lat','lon']].first().reset_index()
+obs_stations = obs_stations.rename(columns={'lat': 'obs_latitude', 'lon': 'obs_longitude'})
+
+
 plt.figure()
 plt.hist(delta_minutes, bins=60, range=(0, 100), edgecolor='none',alpha=0.5,label='NM')
 plt.legend(loc='upper right',fontsize=10)
@@ -253,6 +257,174 @@ import matplotlib.dates as mdates
 #    np.save(f"{stid}.npy", station_obs.values)
 
 
+#%% Combine merged csv files for analysis
+
+import pandas as pd
+import glob
+import os
+
+# Path to your CSV files
+path = "C:/Users/memes/Documents/SIPS/test_case/Results May 2024"
+all_files = glob.glob(os.path.join(path, "*_3m_hrrr_10m_merged.csv"))
+
+dfs = []
+
+for file in all_files:
+    df = pd.read_csv(file)
+
+    # Ensure station_id exists (extract from filename if needed)
+    if "station_id" not in df.columns:
+        station_id = os.path.basename(file).split("_")[0]
+        df["station_id"] = station_id
+
+    dfs.append(df)
+
+# Concat with full column alignment
+combined_df = pd.concat(dfs, axis=0, ignore_index=True, sort=False)
+
+# Sort by station_id (and timestamp if exists)
+sort_cols = ["station_id"]
+if "timestamp" in combined_df.columns:
+    sort_cols.append("timestamp")
+
+combined_df = combined_df.sort_values(by=sort_cols).reset_index(drop=True)
+
+combined_df["diff_wspd_obs_hrrr"] = combined_df["obs_wspd3"]-combined_df["hrrr_wspd10"]
+combined_df["diff_wdir_obs_hrrr"] = combined_df["obs_wdir"]-combined_df["hrrr_wdir10"]
+combined_df["diff_wdir_obs_hrrr_corr"] = combined_df["obs_wdir"]-combined_df["hrrr_wdir10_corr"]
+combined_df["diff_u_obs_hrrr"] = combined_df["obs_u3"]-combined_df["hrrr_un10"]
+combined_df["diff_v_obs_hrrr"] = combined_df["obs_v3"]-combined_df["hrrr_vn10"]
+
+
+import pandas as pd
+
+# Columns to summarize
+cols_to_stats = ["diff_wspd_obs_hrrr", "diff_wdir_obs_hrrr_corr", "diff_u_obs_hrrr", "diff_v_obs_hrrr"]
+
+# Group by station_id and compute mean & std for those columns
+stats = (
+    combined_df
+    .groupby("station_id")[cols_to_stats]
+    .agg(["mean", "std"])
+)
+
+# Flatten multi-index column names (e.g., ("wspd","mean") → "wspd_mean")
+stats.columns = ["_".join(col) for col in stats.columns]
+
+# Extract obs latitude and longitude (take first value per station_id)
+coords = combined_df.groupby("station_id")[["obs_latitude", "obs_longitude"]].first()
+
+# Merge coordinates into stats
+stats = stats.merge(coords, on="station_id").reset_index(drop=True)
+
+# Save to CSV
+stats.to_csv("combined_df_diff_wspd_wdir_NM_May_2024_stats.csv", index=False)
+
+
+
+plt.figure()
+hist1 = plt.hist(stats.diff_wspd_obs_hrrr_mean, bins=np.arange(-6, 6, 0.5), edgecolor='none', density=False,alpha=0.5,label= 'obs 3m - hrrr 10m')
+plt.xlabel("Difference in wind speed (m/s) NM July 2024")
+plt.ylabel("Frequency")
+plt.xticks([-6,-5,-4,-3,-2,-1,0,1,2,3,4,5,6])
+plt.legend(loc='upper right',fontsize=10)
+plt.savefig("NM 3m vs hrrr 10m diff wind speed by station histogram test case NM July 2024.png")
+plt.show()
+
+
+plt.figure()
+hist1 = plt.hist(combined_df.diff_wspd_obs_hrrr, bins=np.arange(-10, 10, 0.1), edgecolor='none',weights=np.ones(len(combined_df.diff_wspd_obs_hrrr))/len(combined_df.diff_wspd_obs_hrrr), density=False,alpha=0.5,label= 'obs 3m - hrrr 10m')
+plt.xlabel("Difference in wind speed (m/s) NM July 2024")
+plt.ylabel("Frequency")
+plt.xticks([-10,-9,-8,-7,-6,-5,-4,-3,-2,-1,0,1,2,3,4,5,6,7,8,9,10])
+plt.legend(loc='upper right',fontsize=10)
+plt.savefig("NM 3m vs hrrr 10m diff wind speed histogram test case NM July 2024.png")
+plt.show()
+
+plt.figure()
+hist1 = plt.hist(combined_df.diff_wdir_obs_hrrr, bins=np.arange(-180, 180, 2), edgecolor='none',weights=np.ones(len(combined_df.diff_wdir_obs_hrrr))/len(combined_df.diff_wdir_obs_hrrr), density=False,alpha=0.5,label= 'obs - hrrr')
+hist2 = plt.hist(combined_df.diff_wdir_obs_hrrr_corr, bins=np.arange(-180, 180, 2), edgecolor='none',weights=np.ones(len(combined_df.diff_wdir_obs_hrrr_corr))/len(combined_df.diff_wdir_obs_hrrr_corr), density=False,alpha=0.5,label= 'obs - hrrr corr')
+plt.xlabel("Difference in wind direction (deg) NM July 2024")
+plt.ylabel("Frequency")
+plt.xticks([-180,-150,-120,-90,-60,-30,0,30,60,90,120,150,180])
+plt.legend(loc='upper right',fontsize=10)
+plt.savefig("NM vs hrrr 10m vs hrrr corr wind direction histogram test case NM July 2024.png")
+plt.show()
+
+plt.figure()
+hist1 = plt.hist(combined_df.diff_u_obs_hrrr, bins=np.arange(-10, 10, 0.1), edgecolor='none',weights=np.ones(len(combined_df.diff_u_obs_hrrr))/len(combined_df.diff_u_obs_hrrr), density=False,alpha=0.5,label= 'u, obs - hrrr')
+hist2 = plt.hist(combined_df.diff_v_obs_hrrr, bins=np.arange(-10, 10, 0.1), edgecolor='none',weights=np.ones(len(combined_df.diff_v_obs_hrrr))/len(combined_df.diff_v_obs_hrrr), density=False,alpha=0.5,label= 'v, obs - hrrr')
+plt.xlabel("Difference in u (m/s) and v (m/s) NM July 2024")
+plt.ylabel("Frequency")
+plt.xticks([-10,-9,-8,-7,-6,-5,-4,-3,-2,-1,0,1,2,3,4,5,6,7,8,9,10])
+plt.legend(loc='upper right',fontsize=10)
+plt.savefig("NM 3m vs hrrr 10m diff u v histogram test case NM July 2024.png")
+plt.show()
+
+
+#%% Plot elevation and overlay differences in wind speed and direction
+
+import xarray as xr
+import matplotlib.pyplot as plt
+import cartopy.crs as ccrs
+import cartopy.feature as cfeature
+
+# Enable interactive backend when running in IPython, ignore in plain Python scripts
+try:
+    if callable(globals().get("get_ipython", None)):
+        get_ipython().run_line_magic("matplotlib", "widget")  # type: ignore[name-defined]
+except Exception:
+    pass
+
+# Load the elevation dataset
+#ncfile = '/kfs2/projects/sfcwinds/environmental_data/CONUS_elevation_1km.nc'
+
+ncfile = 'C:/Users/memes/Documents/SIPS/environmental_data/CONUS_elevation_1km.nc'
+
+ds = xr.open_dataset(ncfile)
+
+# Extract variables
+mean_elev = ds['elevation_mean']
+lat = ds['lat']
+lon = ds['lon']
+
+# Remove the row with index label 99 (poor data)
+# 'inplace=True' modifies the DataFrame directly
+#stats.drop(index=99, inplace=True) 
+
+# If you want to create a new DataFrame without modifying the original:
+#stats_new = df.drop(index=99)
+
+# Plot mean elevation with Cartopy for US country and state outlines
+fig = plt.figure(figsize=(10, 6))
+ax = plt.axes(projection=ccrs.PlateCarree())
+mesh = ax.pcolormesh(lon, lat, mean_elev, cmap='terrain', shading='auto', transform=ccrs.PlateCarree(),vmin = 0,vmax=4000)
+plt.colorbar(mesh, ax=ax, label='Mean Elevation (m)')
+ax.add_feature(cfeature.BORDERS, linewidth=1)
+ax.add_feature(cfeature.STATES, linewidth=0.5)
+ax.add_feature(cfeature.COASTLINE, linewidth=1)
+ax.set_xlabel('Longitude')
+ax.set_ylabel('Latitude')
+#ax.set_title('Mean Elevation on HRRR 3km Grid')
+ax.set_extent([-109,-103, 31.5, 37.5])
+
+# Scatter plot with color scale
+#sc = ax.scatter(stats.obs_longitude,stats.obs_latitude, c=stats.diff_wspd_obs_hrrr_mean, vmin=-4, vmax=4, cmap='bwr', s=20)
+#sc = ax.scatter(stats.obs_longitude,stats.obs_latitude, c=stats.diff_wdir_obs_hrrr_corr_mean, vmin=-60, vmax=60, cmap='bwr', s=20)
+#sc = ax.scatter(stats.obs_longitude,stats.obs_latitude, c=stats.diff_u_obs_hrrr_mean, vmin=-2, vmax=2, cmap='bwr', s=20)
+sc = ax.scatter(stats.obs_longitude,stats.obs_latitude, c=stats.diff_v_obs_hrrr_mean, vmin=-2, vmax=2, cmap='bwr', s=20)
+ax.scatter(stats.obs_longitude[77],stats.obs_latitude[77], color='k', s=50)
+
+# Add a colorbar to show the mapping
+#cbar = plt.colorbar(sc,ax=ax,orientation='vertical', label="Difference in wind speed (m/s) obs - hrrr")
+#cbar = plt.colorbar(sc,ax=ax,orientation='vertical', label="Difference in wind direction (deg) obs - hrrr")
+#cbar = plt.colorbar(sc,ax=ax,orientation='vertical', label="Difference in u (m/s) obs - hrrr")
+cbar = plt.colorbar(sc,ax=ax,orientation='vertical', label="Difference in v (m/s) obs - hrrr")
+
+plt.tight_layout()
+plt.show()
+
+
 
 #%% Combine quantile stats and contour plots
 
@@ -263,16 +435,16 @@ import pandas as pd
 import os
 
 # Path to your folder (adjust as needed)
-folder = "C:/Users/memes/Documents/SIPS/NM obs/Quantile results (May 2024)"
+folder = "C:/Users/memes/Documents/SIPS/test_case/Results July 2024"
 
 # Read all CSVs into a list of DataFrames
-dfs = [pd.read_csv(file) for file in glob.glob(f"{folder}/*_3m_hrrr_10m_quantile_stats.csv")]
+dfs = [pd.read_csv(file) for file in glob.glob(f"{folder}/*_3m_hrrr_10m_merged.csv")]
 
 # Combine into one DataFrame
 combined_df = pd.concat(dfs, ignore_index=True)
 
 
-for file in glob.glob(f"{folder}/*_3m_hrrr_10m_quantile_stats.csv"):
+for file in glob.glob(f"{folder}/*_3m_hrrr_10m_merged.csv"):
     df = pd.read_csv(file)
     
     # Extract station ID (text before first "_")
@@ -334,7 +506,7 @@ plt.xlabel("Difference in wind speed (m/s) NM obs 3m - hrrr 10m")
 plt.ylabel("Frequency")
 plt.xticks([-5,-4,-3,-2,-1,0,1,2,3,4,5])
 plt.legend(loc='upper right',fontsize=10)
-plt.savefig("NM 3m vs hrrr 10m diff wind speed histogram test case NM May 2024.png")
+plt.savefig("NM 3m vs hrrr 10m diff wind speed histogram test case NM July 2024.png")
 plt.show()
 
 plt.figure()
@@ -343,7 +515,7 @@ hist2 = plt.hist(diff_df.diff_wdir_std, bins=np.arange(-100, 100, 3), edgecolor=
 plt.xlabel("Difference in wind direction (deg) NM obs - hrrr")
 plt.ylabel("Frequency")
 plt.legend(loc='upper right',fontsize=10)
-plt.savefig("NM vs hrrr 10m wind direction histogram test case NM May 2024.png")
+plt.savefig("NM vs hrrr 10m wind direction histogram test case NM July 2024.png")
 plt.show()
 
 plt.figure()
@@ -352,7 +524,7 @@ hist2 = plt.hist(diff_df.diff_wdir_corr_std, bins=np.arange(-100, 100, 3), edgec
 plt.xlabel("Difference in wind direction (deg) NM obs - hrrr corr")
 plt.ylabel("Frequency")
 plt.legend(loc='upper right',fontsize=10)
-plt.savefig("NM vs hrrr corr 10m wind direction histogram test case NM May 2024.png")
+plt.savefig("NM vs hrrr corr 10m wind direction histogram test case NM July 2024.png")
 plt.show()
 
 
@@ -563,7 +735,7 @@ hist2 = plt.hist(hrrr_windspeed_10m, bins=np.arange(0, 16, 0.3), edgecolor='none
 plt.xlabel("Wind speed (m/s)")
 plt.ylabel("Frequency")
 plt.legend(loc='upper right',fontsize=10)
-plt.savefig(f"{stid} 3m vs hrrr 10m wind speed histogram test case NM May 2024.png")
+plt.savefig(f"{stid} 3m vs hrrr 10m wind speed histogram test case NM July 2024.png")
 plt.show()
 
 obs_winddirection_10m = merged.obs_wdir[~np.isnan(merged.obs_wdir)]
@@ -576,7 +748,7 @@ hist2 = plt.hist(hrrr_winddirection_corr_10m, bins=np.arange(0, 360, 2), edgecol
 plt.xlabel("Wind direction (deg)")
 plt.ylabel("Frequency")
 plt.legend(loc='upper left',fontsize=10)
-plt.savefig(f"{stid} 3m vs hrrr corr 10m wind direction histogram test case NM May 2024.png")
+plt.savefig(f"{stid} 3m vs hrrr corr 10m wind direction histogram test case NM July 2024.png")
 plt.show()
 
 plt.figure()
@@ -586,11 +758,11 @@ hist2 = plt.hist(hrrr_winddirection_corr_10m, bins=np.arange(0, 360, 2), edgecol
 plt.xlabel("Wind direction (deg)")
 plt.ylabel("Frequency")
 plt.legend(loc='upper left',fontsize=10)
-plt.savefig(f"{stid} 3m vs hrrr vs hrrr corr 10m wind direction histogram test case NM May 2024.png")
+plt.savefig(f"{stid} 3m vs hrrr vs hrrr corr 10m wind direction histogram test case NM July 2024.png")
 plt.show()    
 
 
-#%% Test case by station
+#%% Test case by station (NM)
 for stid in obs["station_id"].unique():
     station_obs_test2 = obs[obs["station_id"] == stid]
     #station_obs_test2 = obs[obs["station_id"] == "CZZN5"]       # single station
@@ -599,7 +771,7 @@ for stid in obs["station_id"].unique():
 #lat = station_obs_test[0,7]
 #lon = station_obs_test[0,8]
 
-    hrrr_testcase = xr.open_dataset("C:/Users/memes/Documents/SIPS/test_case/HRRR_NM_2024-05-01_2024-05-31.nc")   # test case
+    hrrr_testcase = xr.open_dataset("C:/Users/memes/Documents/SIPS/test_case/HRRR_NM_2024-07-01_2024-07-31.nc")   # test case
     #hrrr_testcase = hrrr_testcase.set_coords(["latitude", "longitude"])
     
     # Take just the first time slice
@@ -734,7 +906,7 @@ for stid in obs["station_id"].unique():
     ax.set_ylabel('Wind speed (m/s)')
     ax.legend(loc='upper right',fontsize=10)
     fig.autofmt_xdate()
-    fig.savefig(f"{stid} 3m vs hrrr 10m wind speed test case NM May 2024.png")
+    fig.savefig(f"{stid} 3m vs hrrr 10m wind speed test case NM July 2024.png")
     #plt.tight_layout()
     #plt.savefig("obs num time resolution NM.png")
     #plt.xlim([datetime.datetime(2024,8,26,0,0), datetime.datetime(2024,9,10,0,0)])
@@ -748,7 +920,7 @@ for stid in obs["station_id"].unique():
     ax.set_ylabel('Wind direction (deg)')
     ax.legend(loc='upper right',fontsize=10)
     fig.autofmt_xdate()
-    fig.savefig(f"{stid} 3m vs hrrr corr 10m wind direction test case NM May 2024.png")
+    fig.savefig(f"{stid} 3m vs hrrr corr 10m wind direction test case NM July 2024.png")
 
     fig, ax = plt.subplots()
     ax.plot(merged.valid_time[~np.isnan(merged.obs_wdir)],merged.obs_wdir[~np.isnan(merged.obs_wdir)],label= f"{stid}"' 3m')
@@ -759,7 +931,7 @@ for stid in obs["station_id"].unique():
     ax.set_ylabel('Wind direction (deg)')
     ax.legend(loc='upper right',fontsize=10)
     fig.autofmt_xdate()
-    fig.savefig(f"{stid} 3m vs hrrr vs hrrr corr 10m wind direction test case NM May 2024.png")
+    fig.savefig(f"{stid} 3m vs hrrr vs hrrr corr 10m wind direction test case NM July 2024.png")
   
     
     obs_windspeed_3m = merged.obs_wspd3[~np.isnan(merged.obs_wspd3)]
@@ -771,7 +943,7 @@ for stid in obs["station_id"].unique():
     plt.xlabel("Wind speed (m/s)")
     plt.ylabel("Frequency")
     plt.legend(loc='upper right',fontsize=10)
-    plt.savefig(f"{stid} 3m vs hrrr 10m wind speed histogram test case NM May 2024.png")
+    plt.savefig(f"{stid} 3m vs hrrr 10m wind speed histogram test case NM July 2024.png")
     plt.show()
     
     obs_winddirection_10m = merged.obs_wdir[~np.isnan(merged.obs_wdir)]
@@ -784,7 +956,7 @@ for stid in obs["station_id"].unique():
     plt.xlabel("Wind direction (deg)")
     plt.ylabel("Frequency")
     plt.legend(loc='upper left',fontsize=10)
-    plt.savefig(f"{stid} 3m vs hrrr corr 10m wind direction histogram test case NM May 2024.png")
+    plt.savefig(f"{stid} 3m vs hrrr corr 10m wind direction histogram test case NM July 2024.png")
     plt.show()
     
     plt.figure()
@@ -794,11 +966,163 @@ for stid in obs["station_id"].unique():
     plt.xlabel("Wind direction (deg)")
     plt.ylabel("Frequency")
     plt.legend(loc='upper left',fontsize=10)
-    plt.savefig(f"{stid} 3m vs hrrr vs hrrr corr 10m wind direction histogram test case NM May 2024.png")
+    plt.savefig(f"{stid} 3m vs hrrr vs hrrr corr 10m wind direction histogram test case NM July 2024.png")
     plt.show()    
 
   
     
+
+
+
+#%% Functions (model-obs agreement for terrain complexity)
+
+def find_closest_grid_point(lon, lat, lon_grid, lat_grid):
+    # Compute distance to all grid points in terrain file
+    dist = np.sqrt((lon_grid - lon)**2 + (lat_grid - lat)**2)
+    idx = np.unravel_index(np.argmin(dist), dist.shape)
+    return idx
+
+def get_vicinity_mean_std(std_array, idx, radius=10):
+    # get the standard deviation of terrain height in s specified radius
+    y, x = idx
+    y1 = max(0, y - radius)
+    y2 = min(std_array.shape[0], y + radius + 1)
+    x1 = max(0, x - radius)
+    x2 = min(std_array.shape[1], x + radius + 1)
+    vicinity = std_array[y1:y2, x1:x2]
+    return np.nanmean(vicinity)
+
+
+# Ensure numeric lat/lon in both dataframes
+combined_df["obs_latitude"] = pd.to_numeric(combined_df["obs_latitude"], errors="coerce")
+combined_df["obs_longitude"] = pd.to_numeric(combined_df["obs_longitude"], errors="coerce")
+
+obs_stations["obs_latitude"] = pd.to_numeric(obs_stations["obs_latitude"], errors="coerce")
+obs_stations["obs_longitude"] = pd.to_numeric(obs_stations["obs_longitude"], errors="coerce")
+
+valid_stations = combined_df['station_id'].dropna().unique()
+
+
+# Read terrain data
+#ncfile = '/kfs2/projects/sfcwinds/environmental_data/CONUS_elevation_1km.nc'
+ncfile = 'C:/Users/memes/Documents/SIPS/environmental_data/CONUS_elevation_1km.nc'
+ds = xr.open_dataset(ncfile)
+ds = ds.fillna(0)   # NaN values are where no elevation is available (e.g. ocean) - set to zero
+mean_elev = ds['elevation_mean'].values
+std_elev = ds['elevation_std'].values
+lat_grid = ds['lat'].values
+lon_grid = ds['lon'].values
+ds.close()
+
+
+terrain_results = []
+
+for stn in valid_stations:
+    stn_rows = combined_df.loc[combined_df['station_id'] == stn]
+
+    # Safety check
+    if stn_rows.empty:
+        continue
+
+    lat = stn_rows['obs_latitude'].iloc[0]
+    lon = stn_rows['obs_longitude'].iloc[0]
+
+    idx = find_closest_grid_point(lon, lat, lon_grid, lat_grid)
+    closest_elev = mean_elev[idx]
+    mean_std_vicinity = get_vicinity_mean_std(std_elev, idx, radius=20)
+
+    if mean_std_vicinity > 500:
+        mean_std_vicinity = 0
+
+    terrain_results.append({
+        'station': stn,
+        'closest_elev': closest_elev,
+        'mean_std_vicinity': mean_std_vicinity
+    })
+
+terrain_df = pd.DataFrame(terrain_results)
+
+
+import pandas as pd
+from scipy.spatial import cKDTree
+import numpy as np
+
+# Ensure numeric coordinates
+stats['obs_latitude'] = pd.to_numeric(stats['obs_latitude'], errors='coerce')
+stats['obs_longitude'] = pd.to_numeric(stats['obs_longitude'], errors='coerce')
+obs_stations['obs_latitude'] = pd.to_numeric(obs_stations['obs_latitude'], errors='coerce')
+obs_stations['obs_longitude'] = pd.to_numeric(obs_stations['obs_longitude'], errors='coerce')
+
+# Drop invalid rows
+obs_stations_clean = obs_stations.dropna(subset=['obs_latitude','obs_longitude']).copy()
+stats_valid = stats.dropna(subset=['obs_latitude','obs_longitude']).copy()
+
+# Build KDTree from station coordinates
+tree = cKDTree(obs_stations_clean[['obs_latitude','obs_longitude']].values)
+
+# Find nearest station for each stats row
+dist, idx = tree.query(stats_valid[['obs_latitude','obs_longitude']].values, k=1)
+
+# Assign station column
+station_ids_array = obs_stations_clean['station_id'].to_numpy()
+stats_valid['station'] = station_ids_array[idx]
+
+# Merge back into original stats DataFrame
+stats.loc[stats_valid.index, 'station'] = stats_valid['station']
+
+
+merged_df = terrain_df.merge(stats, on='station', how='left')
+
+
+""" Then merge terrain_df with the station results files and plot bias over mean_std_vicinity"""
+
+# %% Plot: mean_std_vicinity vs. median_rmse_BCHRRR and median_rmse_WTK
+
+plot_df = merged_df.copy()
+
+#plot_df = plot_df[~(abs(plot_df['diff_wspd_obs_hrrr_mean']) > 10)]
+
+x_parameter = 'mean_std_vicinity'
+y_parameter = 'diff_wdir_obs_hrrr_corr_mean' # 'median_R'  # "median_R", 'median_rmse', "median_bias"
+
+if x_parameter == 'mean_std_vicinity':
+    x_label = "Elevation Std Dev in 20km Vicinity (m)"
+else:
+    x_label = x_parameter
+
+if y_parameter == 'diff_wdir_obs_hrrr_corr_mean':
+    y_label = "Mean difference in wind direction (deg) obs - hrrr"
+else:
+    y_label = y_parameter
+
+
+fig, ax = plt.subplots(figsize=(11, 6))
+
+# Plot for obs
+ax.scatter(plot_df[x_parameter], plot_df[y_parameter], color='red', label='NM July 2024')
+# Plot for WTK
+#ax.scatter(plot_df[x_parameter], plot_df[y_parameter+'_WTK'], color='orange', label='WTK-LED')
+
+# Add station labels
+for i, row in plot_df.iterrows():
+    ax.text(row[x_parameter], row[y_parameter], str(row['station']), color='red', fontsize=8, va='bottom', ha='right')
+    #ax.text(row[x_parameter], row[y_parameter+'_WTK'], str(row['station']), color='orange', fontsize=8, va='top', ha='left')
+
+# ax.set_xlim(-10, 35)
+
+ax.set_xlabel(x_label, fontsize=14)
+ax.set_ylabel(y_label, fontsize=14)
+ax.tick_params(axis='x', labelsize=14)  # For x-axis
+ax.tick_params(axis='y', labelsize=14)  # For y-axis
+#ax.set_ylim(-4, 2)
+ax.legend(fontsize=14)
+plt.grid()
+plt.tight_layout()
+ 
+
+
+
+
 
 
 
@@ -864,7 +1188,7 @@ for stid in obs["station_id"].unique():
     ax.set_ylabel('Wind speed (m/s)')
     ax.legend(loc='upper right',fontsize=10)
     fig.autofmt_xdate()
-    fig.savefig(f"{stid} 3m vs hrrr 10m wind speed test case NM May 2024.png")
+    fig.savefig(f"{stid} 3m vs hrrr 10m wind speed test case NM July 2024.png")
     #plt.tight_layout()
     #plt.savefig("obs num time resolution NM.png")
     #plt.xlim([datetime.datetime(2024,8,26,0,0), datetime.datetime(2024,9,10,0,0)])
@@ -878,7 +1202,7 @@ for stid in obs["station_id"].unique():
     ax.set_ylabel('Wind direction (deg)')
     ax.legend(loc='upper right',fontsize=10)
     fig.autofmt_xdate()
-    fig.savefig(f"{stid} 3m  hrrr 10m wind direction test case NM May 2024.png")
+    fig.savefig(f"{stid} 3m  hrrr 10m wind direction test case NM July 2024.png")
     
     
     plt.figure()
@@ -887,7 +1211,7 @@ for stid in obs["station_id"].unique():
     plt.xlabel("Wind speed (m/s)")
     plt.ylabel("Frequency")
     plt.legend(loc='upper right',fontsize=10)
-    plt.savefig(f"{stid} 3m vs hrrr 10m wind speed histogram test case NM May 2024.png")
+    plt.savefig(f"{stid} 3m vs hrrr 10m wind speed histogram test case NM July 2024.png")
     plt.show()
     
     obs_winddirection_10m = merged.winddirection[~np.isnan(merged.winddirection)]
@@ -901,7 +1225,7 @@ for stid in obs["station_id"].unique():
     plt.xlabel("Wind direction (deg)")
     plt.ylabel("Frequency")
     plt.legend(loc='upper left',fontsize=10)
-    plt.savefig(f"{stid} 3m vs hrrr 10m wind direction histogram test case NM May 2024.png")
+    plt.savefig(f"{stid} 3m vs hrrr 10m wind direction histogram test case NM July 2024.png")
     plt.show()
     
 
@@ -953,7 +1277,7 @@ for stid in obs["station_id"].unique():
     plt.xlabel("Wind speed (m/s)")
     plt.ylabel("Frequency")
     plt.legend(loc='upper right',fontsize=10)
-    plt.savefig(f"{stid} 3m vs hrrr 10m wind speed histogram test case NM May 2024.png")
+    plt.savefig(f"{stid} 3m vs hrrr 10m wind speed histogram test case NM July 2024.png")
     plt.show()
     
     plt.figure()
@@ -963,7 +1287,7 @@ for stid in obs["station_id"].unique():
     plt.ylabel("Values")
     plt.xticks([0,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1])
     plt.legend(loc='upper left',fontsize=10)
-    plt.savefig(f"{stid} 3m vs hrrr 10m wind speed quantiles test case NM May 2024.png")
+    plt.savefig(f"{stid} 3m vs hrrr 10m wind speed quantiles test case NM July 2024.png")
     plt.show()
     
     plt.figure()
@@ -972,7 +1296,7 @@ for stid in obs["station_id"].unique():
     plt.ylabel("Difference")
     plt.xticks([0,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1])
     plt.legend(loc='upper left',fontsize=10)
-    plt.savefig(f"{stid} 3m vs hrrr 10m wind speed quantiles difference test case NM May 2024.png")
+    plt.savefig(f"{stid} 3m vs hrrr 10m wind speed quantiles difference test case NM July 2024.png")
     plt.show()
     
     
@@ -998,7 +1322,7 @@ for stid in obs["station_id"].unique():
     plt.xlabel("Wind direction (deg)")
     plt.ylabel("Frequency")
     plt.legend(loc='upper left',fontsize=10)
-    plt.savefig(f"{stid} 3m vs hrrr 10m wind direction histogram test case NM May 2024.png")
+    plt.savefig(f"{stid} 3m vs hrrr 10m wind direction histogram test case NM July 2024.png")
     plt.show()
     
     plt.figure()
@@ -1009,7 +1333,7 @@ for stid in obs["station_id"].unique():
     plt.ylabel("Values")
     plt.xticks([0,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1])
     plt.legend(loc='upper left',fontsize=10)
-    plt.savefig(f"{stid} 3m vs hrrr 10m wind direction quantiles test case NM May 2024.png")
+    plt.savefig(f"{stid} 3m vs hrrr 10m wind direction quantiles test case NM July 2024.png")
     plt.show()
     
     plt.figure()
@@ -1019,7 +1343,7 @@ for stid in obs["station_id"].unique():
     plt.ylabel("Difference")
     plt.xticks([0,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1])
     plt.legend(loc='upper left',fontsize=10)
-    plt.savefig(f"{stid} 3m vs hrrr 10m wind direction quantiles difference test case NM May 2024.png")
+    plt.savefig(f"{stid} 3m vs hrrr 10m wind direction quantiles difference test case NM July 2024.png")
     plt.show()
     
     

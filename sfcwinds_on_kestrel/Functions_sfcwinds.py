@@ -27,7 +27,8 @@ def find_closest_HRRR_loc(hrrr, hrrr_coords_to_use):
     closest_lon = hrrr.longitude.values[idx]
 
     # HRRR data at that index
-    hrrr_loc =hrrr.isel(y=idx[0], x=idx[1])
+    #hrrr_loc =hrrr.isel(y=idx[0], x=idx[1])
+    hrrr_loc = hrrr.isel(**{dim: int(i) for dim, i in zip(hrrr.latitude.dims, idx)})
 
     return hrrr_loc, closest_lat, closest_lon, idx
 
@@ -63,6 +64,23 @@ def haversine(lat1, lon1, lat2, lon2):
     a = np.sin(dphi/2.0)**2 + np.cos(phi1) * np.cos(phi2) * np.sin(dlambda/2.0)**2
     c = 2 * np.arctan2(np.sqrt(a), np.sqrt(1 - a))
     return R * c
+
+def find_closest_grid_point(lon, lat, lon_grid, lat_grid):
+    # Compute distance to all grid points in terrain file
+    dist = np.sqrt((lon_grid - lon)**2 + (lat_grid - lat)**2)
+    idx = np.unravel_index(np.argmin(dist), dist.shape)
+    return idx
+
+def get_vicinity_mean_std(std_array, idx, radius=10):
+    # get the standard deviation of terrain height in s specified radius
+    y, x = idx
+    y1 = max(0, y - radius)
+    y2 = min(std_array.shape[0], y + radius + 1)
+    x1 = max(0, x - radius)
+    x2 = min(std_array.shape[1], x + radius + 1)
+    vicinity = std_array[y1:y2, x1:x2]
+    return np.nanmean(vicinity)
+
 
 
 def wspd_wdir_from_uv(u, v):
