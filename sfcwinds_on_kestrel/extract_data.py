@@ -27,6 +27,7 @@ if not os.path.exists(save_folder):
 # %% HRRR data
 #HRRR_folder = "/kfs2/projects/sfcwinds/HRRR"
 HRRR_folder = "/home/itopcuog/sfcwinds_dir/reduced_data/HRRR"
+#HRRR_folder = "/scratch/itopcuog/medium_data/HRRR_small"
 area = "US_SW" # keep this (we only have HRRR data for the US southwest downloaded for the entire 2014-2024 period)
 date_String = "*"   # keep * or select a date for testing
 
@@ -61,6 +62,7 @@ y_closest=[0] * len_station
 lat=[0] * len_station
 lon=[0] * len_station
 
+stations_found = []
 
 # Sweeping over all stations to determine the
 # closest coordinates for each one
@@ -78,6 +80,9 @@ for station in stations:
     closest, closest_lat, closest_lon, idx = find_closest_HRRR_loc(hrrr_base, [lat[st_ind], lon[st_ind]]) 
     print(f"Coordinates are: {closest_lat}, {closest_lon}")
 
+    distance_m = haversine(hrrr_loc.latitude.values, hrrr_loc.longitude.values, lat[st_ind], lon[st_ind])
+    if distance_m<2000:
+        stations_found.append("station")
 
     # get idx of the closest measurement point for each station(HRRR has x and y as dimensions, lon and lat are only variables)
     print(f"Station index for {station} is {st_ind}")
@@ -92,7 +97,7 @@ print(f"File list: {file_list[:]}")
 
 # Sweep over all files, one file at a time
 for ifile in file_list:
-    print(f"filenameis {ifile}")
+    print(f"filename is {ifile}")
     # Opening ifile, which is only one file
     hrrr = xr.open_dataset(ifile, chunks="auto", engine='netcdf4', decode_timedelta= True)
 
@@ -115,10 +120,24 @@ for ifile in file_list:
             print("Data was measured more than 2kms away.")
 
     # correct the HRRR wind direction (model coordinate system into Noth-East)
-        hrrr_loc["u10"], hrrr_loc["v10"] = rotate_to_true_north(hrrr_loc["u10"], hrrr_loc["v10"], hrrr_loc["longitude"])
+        # u10
+        if (('u10' in hrrr_loc.data_vars) and ('v10' in hrrr_loc.data_vars)):
+            hrrr_loc["u10"], hrrr_loc["v10"] = rotate_to_true_north(hrrr_loc["u10"], hrrr_loc["v10"], hrrr_loc["longitude"])
+            # calculate wind speed and direction for 10 m
+            hrrr_loc["wspd10"], hrrr_loc["wdir10"] = wspd_wdir_from_uv(hrrr_loc["u10"], hrrr_loc["v10"])
 
-    # calculate wind speed and direction
-        hrrr_loc["wspd10"], hrrr_loc["wdir10"] = wspd_wdir_from_uv(hrrr_loc["u10"], hrrr_loc["v10"])
+        # u10_h
+        print(f'{('u10_h' in hrrr_loc.data_vars)}')
+        if (('u10_h' in hrrr_loc.data_vars) and ('v10_h' in hrrr_loc.data_vars)):
+            hrrr_loc["u10_h"], hrrr_loc["v10_h"] = rotate_to_true_north(hrrr_loc["u10_h"], hrrr_loc["v10_h"], hrrr_loc["longitude"])
+        # calculate wind speed and direction for 10_h
+            hrrr_loc["wspd10_h"], hrrr_loc["wdir10_h"] = wspd_wdir_from_uv(hrrr_loc["u10_h"], hrrr_loc["v10_h"])
+
+        # u80
+        if (('u80' in hrrr_loc.data_vars) and ('v80' in hrrr_loc.data_vars)):
+            hrrr_loc["u80"], hrrr_loc["v80"] = rotate_to_true_north(hrrr_loc["u80"], hrrr_loc["v80"], hrrr_loc["longitude"])
+        # calculate wind speed and direction for 80 m
+            hrrr_loc["wspd80"], hrrr_loc["wdir80"] = wspd_wdir_from_uv(hrrr_loc["u80"], hrrr_loc["v80"])
 
     # Make some plots comparing wind speed and direction for one / a few stations (compare HRRR to observations)
     # see below for code example
