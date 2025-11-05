@@ -57,12 +57,14 @@ stations = ["NMC60", "NMC63"]   #  meta[meta.state == "NM"].station_id.values  #
 # The number of stations that are probed for
 len_station=len(stations);
 # Array to hold all the station locations
-x_closest=[0] * len_station
-y_closest=[0] * len_station
-lat=[0] * len_station
-lon=[0] * len_station
+#x_closest=[0] * len_station
+#y_closest=[0] * len_station
+#lat=[0] * len_station
+#lon=[0] * len_station
 
 stations_found = []
+x_closest=[]
+y_closest=[]
 
 # Sweeping over all stations to determine the
 # closest coordinates for each one
@@ -70,29 +72,42 @@ for station in stations:
 
     row = meta[meta['station_id'] == station].iloc[0]
     st_ind=stations.index(station);
-    lon[st_ind] = row['lon']
-    lat[st_ind] = row['lat']
-    if lon[st_ind] < 0:
-        lon[st_ind] = lon[st_ind] + 360 # convert to 0-360 (HRRR convention)
-    print(f"Station: {station}, Longitude: {lon[st_ind]}, Latitude: {lat[st_ind]}")
+    #lon[st_ind] = row['lon']
+    #lat[st_ind] = row['lat']
+    lon = row['lon']
+    lat = row['lat']
+    if lon < 0:
+        lon = lon + 360 # convert to 0-360 (HRRR convention)
+    print(f"Station: {station}, Longitude: {lon}, Latitude: {lat}")
 
     # Find closest HRRR location for this station (maybe also the 4 sourrounding stations)
-    closest, closest_lat, closest_lon, idx = find_closest_HRRR_loc(hrrr_base, [lat[st_ind], lon[st_ind]]) 
+    closest, closest_lat, closest_lon, idx = find_closest_HRRR_loc(hrrr_base, [lat, lon]) 
     print(f"Coordinates are: {closest_lat}, {closest_lon}")
 
-    distance_m = haversine(hrrr_loc.latitude.values, hrrr_loc.longitude.values, lat[st_ind], lon[st_ind])
-    if distance_m<2000:
-        stations_found.append("station")
+    distance_m = haversine(closest_lat, closest_lon, lat, lon)
+
+    print(f"Actual location for station {station} is {lon} {lat}") 
+    print(f"Closest found location for station {station} is {closest_lon} {closest_lat}") 
+
+    try:
+        print(f"Distance is {distance_m}. Data accepted.")
+        stations_found.append(station)
+        y_closest.append(idx[0])
+        x_closest.append(idx[1])
+        print(f"station {station}, xc {x_closest[st_ind]}, yc {y_closest[st_ind]}")
+    except (distance_m >2000.):
+        print("Data was measured more than 2kms away.")
 
     # get idx of the closest measurement point for each station(HRRR has x and y as dimensions, lon and lat are only variables)
-    print(f"Station index for {station} is {st_ind}")
-    y_closest[st_ind] = idx[0]
-    x_closest[st_ind] = idx[1]
-    print(f"station {station}, xc {x_closest[st_ind]}, yc {y_closest[st_ind]}")
+    #print(f"Station index for {station} is {st_ind}")
+    #y_closest[st_ind] = idx[0]
+    #x_closest[st_ind] = idx[1]
 
     # loop over all HRRR files and extract data for this location
     # something like 
 
+print(f"Stations found: {stations_found}")
+print(f"x and y closest found: {x_closest} {y_closest}")
 print(f"File list: {file_list[:]}")
 
 # Sweep over all files, one file at a time
@@ -104,20 +119,12 @@ for ifile in file_list:
 # Sweep over all stations within each file loop
 # This way, only one file is open whiledata for several
 # stations are being extracted
-    for station in stations:
+    for station in stations_found:
         print(f"Station name is {station}")
-        st_ind=stations.index(station)
+        st_ind=stations_found.index(station)
         print(f"Station index is {st_ind}")
         hrrr_loc = hrrr.isel(x = x_closest[st_ind], y = y_closest[st_ind]) 
-        print(f"Actual location for station {station} is {lon[st_ind]} {lat[st_ind]}") 
-        print(f"Closest found location for station {station} is {hrrr_loc.longitude.values} {hrrr_loc.latitude.values}") 
         # for testing: distance between station and closest HRRR grid point (should be below 1.5km at 3km grid spacing)
-        distance_m = haversine(hrrr_loc.latitude.values, hrrr_loc.longitude.values, lat[st_ind], lon[st_ind])
-        # Checking that the HRRR coordinates are within 2kms of the station coordinates
-        try:
-            print(f"Distance is {distance_m}. Data accepted.")
-        except (distance_m >2000.):
-            print("Data was measured more than 2kms away.")
 
     # correct the HRRR wind direction (model coordinate system into Noth-East)
         # u10
@@ -157,7 +164,7 @@ for ifile in file_list:
 
 
 # Merge the individual files for each station
-for station in stations:
+for station in stations_found:
     date_String = "*"   # wildcard for dates
     file_part_pattern = os.path.join(save_folder, f"HRRR_{station}_{date_String}*.nc")
     file_part_list = sorted(glob.glob(file_part_pattern))
