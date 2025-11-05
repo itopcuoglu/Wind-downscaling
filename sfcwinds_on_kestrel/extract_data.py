@@ -53,16 +53,9 @@ stations = ["NMC60", "NMC63"]   #  meta[meta.state == "NM"].station_id.values  #
 
 
 
-# First record all the station locations
-# The number of stations that are probed for
-len_station=len(stations);
-# Array to hold all the station locations
-#x_closest=[0] * len_station
-#y_closest=[0] * len_station
-#lat=[0] * len_station
-#lon=[0] * len_station
-
+# Array to hold all the found stations
 stations_found = []
+# Array to hold all the station locations
 x_closest=[]
 y_closest=[]
 
@@ -72,8 +65,7 @@ for station in stations:
 
     row = meta[meta['station_id'] == station].iloc[0]
     st_ind=stations.index(station);
-    #lon[st_ind] = row['lon']
-    #lat[st_ind] = row['lat']
+
     lon = row['lon']
     lat = row['lat']
     if lon < 0:
@@ -89,8 +81,12 @@ for station in stations:
     print(f"Actual location for station {station} is {lon} {lat}") 
     print(f"Closest found location for station {station} is {closest_lon} {closest_lat}") 
 
+    # Exception handling for stations that cannot be matched
+    # within 2 km to a measurement
     try:
         print(f"Distance is {distance_m}. Data accepted.")
+        # "push_back" new station and coordinate indices
+        # at the end of each array
         stations_found.append(station)
         y_closest.append(idx[0])
         x_closest.append(idx[1])
@@ -98,10 +94,6 @@ for station in stations:
     except (distance_m >2000.):
         print("Data was measured more than 2kms away.")
 
-    # get idx of the closest measurement point for each station(HRRR has x and y as dimensions, lon and lat are only variables)
-    #print(f"Station index for {station} is {st_ind}")
-    #y_closest[st_ind] = idx[0]
-    #x_closest[st_ind] = idx[1]
 
     # loop over all HRRR files and extract data for this location
     # something like 
@@ -124,7 +116,6 @@ for ifile in file_list:
         st_ind=stations_found.index(station)
         print(f"Station index is {st_ind}")
         hrrr_loc = hrrr.isel(x = x_closest[st_ind], y = y_closest[st_ind]) 
-        # for testing: distance between station and closest HRRR grid point (should be below 1.5km at 3km grid spacing)
 
     # correct the HRRR wind direction (model coordinate system into Noth-East)
         # u10
@@ -177,7 +168,6 @@ for station in stations_found:
     
 
 # # #Read observations according to station filter -= read the actual data
-
 # print (f"Processing station {station}")
 all_dfs = []
  #years    = ["2024"]  # for testing shorter time series
