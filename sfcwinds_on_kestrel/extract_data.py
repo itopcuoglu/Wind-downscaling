@@ -5,8 +5,13 @@ import glob
 import matplotlib.pyplot as plt
 import numpy as np
 from Functions_sfcwinds import *
-#from nco import Nco
-#nco=Nco()
+from mpi4py import MPI
+
+comm = MPI.COMM_WORLD
+rank = comm.Get_rank() 
+comm_size = comm.Get_size() 
+
+print(f" MPI_COMM {comm} RANK {rank} SIZE {comm_size}\n")
 
 # Enable interactive backend when running in IPython, ignore in plain Python scripts (this is for data inspection with interactive plots)
 try:
@@ -19,8 +24,9 @@ except Exception:
 # Where to save the files
 #save_folder = "/kfs2/projects/sfcwinds/HRRR_station_data"
 save_folder = "/scratch/itopcuog/sfcwinds/HRRR_station_data"
-if not os.path.exists(save_folder):
-    os.makedirs(save_folder)
+if rank==0:
+    if not os.path.exists(save_folder):
+        os.makedirs(save_folder)
 
 
 
@@ -61,46 +67,61 @@ y_closest=[]
 
 # Sweeping over all stations to determine the
 # closest coordinates for each one
-for station in stations:
+if rank==0 : 
+    for station in stations:
 
-    row = meta[meta['station_id'] == station].iloc[0]
-    st_ind=stations.index(station);
+        row = meta[meta['station_id'] == station].iloc[0]
+        st_ind=stations.index(station);
 
-    lon = row['lon']
-    lat = row['lat']
-    if lon < 0:
-        lon = lon + 360 # convert to 0-360 (HRRR convention)
-    print(f"Station: {station}, Longitude: {lon}, Latitude: {lat}")
+        lon = row['lon']
+        lat = row['lat']
+        if lon < 0:
+            lon = lon + 360 # convert to 0-360 (HRRR convention)
+        print(f"Station: {station}, Longitude: {lon}, Latitude: {lat}")
 
     # Find closest HRRR location for this station (maybe also the 4 sourrounding stations)
-    closest, closest_lat, closest_lon, idx = find_closest_HRRR_loc(hrrr_base, [lat, lon]) 
-    print(f"Coordinates are: {closest_lat}, {closest_lon}")
+        closest, closest_lat, closest_lon, idx = find_closest_HRRR_loc(hrrr_base, [lat, lon]) 
+        print(f"Coordinates are: {closest_lat}, {closest_lon}")
 
-    distance_m = haversine(closest_lat, closest_lon, lat, lon)
+        distance_m = haversine(closest_lat, closest_lon, lat, lon)
 
-    print(f"Actual location for station {station} is {lon} {lat}") 
-    print(f"Closest found location for station {station} is {closest_lon} {closest_lat}") 
+        print(f"Actual location for station {station} is {lon} {lat}") 
+        print(f"Closest found location for station {station} is {closest_lon} {closest_lat}") 
 
     # Exception handling for stations that cannot be matched
     # within 2 km to a measurement
-    try:
-        print(f"Distance is {distance_m}. Data accepted.")
-        # "push_back" new station and coordinate indices
-        # at the end of each array
-        stations_found.append(station)
-        y_closest.append(idx[0])
-        x_closest.append(idx[1])
-        print(f"station {station}, xc {x_closest[st_ind]}, yc {y_closest[st_ind]}")
-    except (distance_m >2000.):
-        print("Data was measured more than 2kms away.")
+        try:
+            print(f"Distance is {distance_m}. Data accepted.")
+            # "push_back" new station and coordinate indices
+            # at the end of each array
+            stations_found.append(station)
+            y_closest.append(idx[0])
+            x_closest.append(idx[1])
+            print(f"station {station}, xc {x_closest[st_ind]}, yc {y_closest[st_ind]}")
+        except (distance_m >2000.):
+            print("Data was measured more than 2kms away.")
 
 
     # loop over all HRRR files and extract data for this location
     # something like 
 
-print(f"Stations found: {stations_found}")
-print(f"x and y closest found: {x_closest} {y_closest}")
-print(f"File list: {file_list[:]}")
+    print(f"Stations found: {stations_found}\n")
+    print(f"x and y closest found: {x_closest} {y_closest}\n")
+    print(f"File list: {file_list[:]}\n")
+
+# Broadcast stations_found, x_closest, and y_closest
+# to all ranks
+stations_found = comm.bcast(stations_found,root=0)
+x_closest = comm.bcast(x_closest,root=0)
+y_closest = comm.bcast(y_closest,root=0)
+
+comm.barrier()
+print(f"RANK {rank} stations {stations_found} x{x_closest} y {y_closest}\n")
+
+#len_file_list=file_list.len()
+#len_file//comm_size
+#lbound_file=
+#ubound_file=
 
 # Sweep over all files, one file at a time
 for ifile in file_list:
