@@ -92,17 +92,15 @@ if rank==0 :
 
     # Exception handling for stations that cannot be matched
     # within 2 km to a measurement
-        try:
-            print(f"Distance is {distance_m}. Data accepted.")
-            # "push_back" new station and coordinate indices
-            # at the end of each array
+        if(distance_m>2000.):
+            print("The data is more than 2kms away. Rejected.")
+            continue
+        else:
             stations_found.append(station)
             y_closest.append(idx[0])
             x_closest.append(idx[1])
-            print(f"station {station}, xc {x_closest[st_ind]}, yc {y_closest[st_ind]}")
-        except (distance_m >2000.):
-            print("Data was measured more than 2kms away.")
-
+            print(f"station {stations_found.iloc[-1]}, xc {x_closest.iloc[-1]}, yc {y_closest.iloc[-1]}")
+        
 
     # loop over all HRRR files and extract data for this location
     # something like 
